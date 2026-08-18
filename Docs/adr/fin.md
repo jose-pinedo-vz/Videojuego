@@ -1,0 +1,1 @@
+# Carpeta de registro de deciciones importantes
