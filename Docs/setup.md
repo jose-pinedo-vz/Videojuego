@@ -1,1 +1,0 @@
-# Guía de instalación y entorno de desarrollo

@@ -1,1 +1,0 @@
-# Documento de Diseño del Juego (Game Design)

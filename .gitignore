@@ -1,9 +1,4 @@
-# Videojuego
-Echenle ganas 
-
-
-# Definan correctamente su gitignore antes de subir cualquier cosa
-
+cat << 'EOF' > .gitignore
 # Unity temporal & cache
 [Ll]ibrary/
 [Tt]emp/
@@ -14,7 +9,7 @@ Echenle ganas
 [Uu]serSettings/
 MemoryCaptures/
 
-# IDE files 
+# IDE files (VS Code / Visual Studio / Rider)
 *.csproj
 *.unityproj
 *.sln

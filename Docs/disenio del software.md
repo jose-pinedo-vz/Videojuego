@@ -1,6 +1,4 @@
-# Videojuego
-Echenle ganas 
-
+# Documento de Diseño del Juego (Game Design)
 
 # Definan correctamente su gitignore antes de subir cualquier cosa
 
