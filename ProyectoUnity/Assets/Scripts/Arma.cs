@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class Arma : MonoBehaviour
 {
@@ -36,7 +37,7 @@ public class Arma : MonoBehaviour
 
     protected virtual void Update()
     {
-        if (jugadorCerca && Input.GetKeyDown(KeyCode.C))
+        if (jugadorCerca && Keyboard.current.cKey.wasPressedThisFrame)
         {
             RecogerArma();
         }

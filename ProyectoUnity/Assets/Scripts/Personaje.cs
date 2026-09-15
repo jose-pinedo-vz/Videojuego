@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using System.Collections;
 
 public class Personaje : MonoBehaviour
@@ -29,17 +30,17 @@ public class Personaje : MonoBehaviour
         GravedadJugador();
     
         //teclas especiales para funciones
-        if (controlador.isGrounded && Input.GetKeyDown(KeyCode.Space))
+        if (controlador.isGrounded && Keyboard.current.spaceKey.wasPressedThisFrame)
         {
             Saltar();
         }
 
-        if (Input.GetKeyDown(KeyCode.LeftShift)) //Llama a la funcion de dezlisarse
+        if (Keyboard.current.leftShiftKey.wasPressedThisFrame) //Llama a la funcion de dezlisarse
         {
             Deslizar(direccionPersonaje);
         }  
 
-        if (armaEquipada != null && Input.GetKeyDown(KeyCode.V)) //Solo dispara si tiene arma equipada
+        if (armaEquipada != null && Keyboard.current.vKey.wasPressedThisFrame) //Solo dispara si tiene arma equipada
         {
             armaEquipada.Disparar();
         }
@@ -50,7 +51,16 @@ public class Personaje : MonoBehaviour
     //TERMINADO MOVER
     protected virtual void Mover()
     {
-        float movimiento=Input.GetAxisRaw("Horizontal"); //Agarra las teclas a,d o <-,->, para el movimiento
+        float movimiento = 0f;
+        if (Keyboard.current.aKey.isPressed) 
+        { 
+            movimiento = -1f;
+        } 
+        else if (Keyboard.current.dKey.isPressed) 
+        {
+            movimiento = 1f; 
+        } //Agarra las teclas a,d o <-,->, para el movimiento
+        
         Vector3 direccion=new Vector3(movimiento,0f,0f); //Transforma el valor del movimiento (1 o -1) en un valor vectorial para que se mueva en esa direccion
 
         controlador.Move(direccion*velocidad*Time.deltaTime); //Esta es la instruccion para que se mueva, hacia la direccion dada, con la velocidad dada y en cierto numero de frames
