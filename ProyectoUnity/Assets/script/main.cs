@@ -3,6 +3,7 @@ using TMPro;
 using UnityEngine.UI;
 using Unity.Services.Core;
 using Unity.Services.Authentication;
+using Unity.Netcode;
 
 public class inicio : MonoBehaviour
 {
@@ -11,6 +12,10 @@ public class inicio : MonoBehaviour
     [SerializeField] private GameObject PanelSeleccion;
     [SerializeField] private GameObject PanelHost;
     [SerializeField] private GameObject PanelCliente;
+    [SerializeField] private GameObject PantallaDeCarga;
+ 
+    // variables 
+    public static string nombre = "";
 
 
     // declaracionde componentes
@@ -19,6 +24,8 @@ public class inicio : MonoBehaviour
     public TextMeshProUGUI txt_inicio;
     public TextMeshProUGUI txt_codigo;
     public TextMeshProUGUI txt_info;
+    public TextMeshProUGUI txt_nombres;
+    public TextMeshProUGUI txt_outputPlayers;
     public Button btn_iniciar;
     public Button btn_crearSala; 
     public Button btn_UnirmeSale;
@@ -26,9 +33,60 @@ public class inicio : MonoBehaviour
     public Button btn_playGame;
     public Button btn_unirmeSala;
     public TMP_InputField inputCode;
+    public TMP_InputField inputName;
 
+    // otras clases 
     public NetWork net;
+    public Red red;
 
+
+    public void iniciarPartidaBoton()
+    {
+        Debug.Log("Boton iniciar partida presionado");
+        GameManager gm = FindFirstObjectByType<GameManager>();
+        if (gm != null)
+        {
+            gm.iniciarPartida();
+        }
+        else
+        {
+            Debug.LogError("No se encontro el GameManager"); // <- y esta también, por si acaso
+        }
+    }
+
+
+    // esta funcion se encargara de desactivar los elementos del canvas y iniciar el mapa 
+    public void iniciarPartida()
+    {
+        // PanelInicio.SetActive(false);
+        // PanelCliente.SetActive(false);
+        // PanelHost.SetActive(false);
+        // PanelSeleccion.SetActive(false);
+        // PantallaDeCarga.SetActive(false);
+        PanelInicio.SetActive(false);
+        PanelCliente.SetActive(false);
+        PanelHost.SetActive(false);
+        PanelSeleccion.SetActive(false);
+        PantallaDeCarga.SetActive(false);
+
+
+        Mapa3D.SetActive(true);
+        piso.SetActive(true);
+
+        foreach (Red jugador in FindObjectsByType<Red>(FindObjectsSortMode.None))
+        {
+            jugador.MostrarJugador(true);
+        }
+    }
+
+
+    // este codigo se ejecuta siemrpe que algien se conecta al servidor
+    public void AlConectarseUnCliente(ulong clienteIDd)
+    {
+        Debug.Log("Se ha unido algien");
+    }
+
+    // se encarge de mostrar los paneles nesesarios y oclutarlos cuando es nesesario
     public void ocultarPaneles()
     {
         Mapa3D.SetActive(false);
@@ -38,6 +96,7 @@ public class inicio : MonoBehaviour
         PanelSeleccion.SetActive(false);
         PanelHost.SetActive(false);
         PanelCliente.SetActive(false);
+        PantallaDeCarga.SetActive(false);
 
         // Mantenemos únicamente el panel principal encendido
         PanelInicio.SetActive(true);
@@ -45,10 +104,6 @@ public class inicio : MonoBehaviour
         txt_inicio.text = "Bienvenido";
         
     }
-    // public void UnirNombres()
-    // {
-        
-    // }
 
     // crear host
     // se crean los botones de crear sala y unirse a una sala, se espera que el host cree la sala y este a la 
@@ -61,6 +116,10 @@ public class inicio : MonoBehaviour
 
         PanelSeleccion.SetActive(true);
         PanelInicio.SetActive(false);
+        if (inputName != null)
+        {
+            nombre = inputName.text;
+        }
     }
 
 
@@ -80,11 +139,14 @@ public class inicio : MonoBehaviour
         PanelSeleccion.SetActive(false);
         PanelHost.SetActive(true);
 
+        // txt_nombres.text="Esperando jugadores ...";
         txt_codigo.text = "Generando codigo ...";
         
-        NetWork.iniciarHost();
+        //NetWork.iniciarHost();
         string code=await net.iniciarRelay();
         txt_codigo.text = "Code: " + code;
+
+        
     }
 
     //  codigo y botones para unirse a la sala del host
@@ -96,34 +158,26 @@ public class inicio : MonoBehaviour
 
         txt_info.text="Igrese el codigo de la sala";
 
-        inputCode.gameObject.SetActive(true);
-
     }
 
     // despues de ingresar el codigo como invitado, se unira a la sala del host
     public async void juntarPlayer()
     {
-        string codigo=inputCode.text;
-        try
+  
+        string codigo = inputCode != null ? inputCode.text : "";
+        //Debug.Log("Intentando unirse a la sala: " + codigo + " con el nombre: " + nombre);
+        // coneccion a la red
+        bool exito = await net.unirseAlHost(codigo);
+
+        if (exito == true)
         {
-            if(codigo.Length>0)
-            {
-                Debug.Log($"Se unira a la sala {codigo}");
-                bool exito=await net.unirseAlHost(codigo);
-                if (exito)  txt_info.text="Conectado con exito";
-                else txt_info.text="Hubo un error";
-            }
-            else
-            {
-                txt_info.text="Codigo incorrecto o hubo un error";
-            }
-        }
-        catch (System.Exception ex)
-        {
-            // Muestra la causa real en la interfaz del juego
-            txt_inicio.text = $"Error: {ex.Message}";
+            PanelCliente.SetActive(false);
+            PantallaDeCarga.SetActive(true);
+            //PanelPantallaDeCarga.SetActive(true);
         }
     }
+
+
 
     // inciar servicios de unity
     // async es para permitir mensajes a internet si que se detenga la ejecucion del codigo.
@@ -131,8 +185,10 @@ public class inicio : MonoBehaviour
     {
         await UnityServices.InitializeAsync();
         await AuthenticationService.Instance.SignInAnonymouslyAsync();
-    }
 
+        NetworkManager.Singleton.OnClientConnectedCallback += AlConectarseUnCliente;
+    }
+    //unirseAlHost
 
     private void Start()
     {
@@ -140,11 +196,13 @@ public class inicio : MonoBehaviour
         ocultarPaneles();
         
 
-        // Asignación corregida de listeners
+        // asignacion de los eventos para cada boton 
         if (btn_iniciar != null) btn_iniciar.onClick.AddListener(iniciar);
         if (btn_salir != null) btn_salir.onClick.AddListener(salir);
         if (btn_crearSala != null) btn_crearSala.onClick.AddListener(crearSala);
-        if (btn_UnirmeSale != null) btn_UnirmeSale.onClick.AddListener(unirmeSala); // Corregido
+        if (btn_UnirmeSale != null) btn_UnirmeSale.onClick.AddListener(unirmeSala); 
         if (btn_unirmeSala != null) btn_unirmeSala.onClick.AddListener(juntarPlayer);
+        // if (btn_playGame != null) btn_playGame.onClick.AddListener(iniciarPartida);
+        if (btn_playGame != null) btn_playGame.onClick.AddListener(iniciarPartidaBoton);
     }
 }

@@ -1,7 +1,6 @@
 using UnityEngine;
 using Unity.Netcode;
 using System;
-
 using Unity.Netcode.Transports.UTP;
 using Unity.Services.Core;
 using Unity.Services.Authentication;
@@ -26,6 +25,8 @@ public class NetWork:MonoBehaviour
             Debug.Log("No se encontro el host");
         }
     }
+
+
     // se encarga de iniciar la secion de red y crear la sala
     // genera el codigo de acceso
     // Task<string> es el valor que devuelve una funcion asincrona 
@@ -53,6 +54,7 @@ public class NetWork:MonoBehaviour
         }
     }
 
+
     // conectar el cliente con el host con el codigo propuesto por el jost
     public async Task<bool> unirseAlHost(string codigoSala)
     {
@@ -74,3 +76,5 @@ public class NetWork:MonoBehaviour
         }
     }
 }
+
+
