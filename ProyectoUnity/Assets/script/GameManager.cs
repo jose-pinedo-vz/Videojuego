@@ -1,6 +1,7 @@
 using UnityEngine;
 using Unity.Netcode;
 using Unity.Collections;
+using TMPro;
 
 public class GameManager : NetworkBehaviour 
 {
@@ -9,6 +10,12 @@ public class GameManager : NetworkBehaviour
     // string tiene una tamanio de memoria varailbe, e inpredeciable, no apto para viajar por intenet
     public NetworkList<FixedString32Bytes> nombresJugadores;
     private inicio texto;
+
+
+    // tiempo de duracion de la partida 
+    public NetworkVariable<float> tiempoRestante = new NetworkVariable<float>(60f);
+    public TextMeshProUGUI txt_tiempo;
+    private bool partidaActiva = false;
 
     //public Transform[] puntosDeSpawn;
     //public Transform[] puntosDeSpawn;
@@ -38,12 +45,14 @@ public class GameManager : NetworkBehaviour
 
 
     public void iniciarPartida()
+{
+    if (NetworkManager.Singleton.IsServer)
     {
-        if(NetworkManager.Singleton.IsServer)
-        {
-            iniciarClienteRpc();
-        }
+        tiempoRestante.Value = 60f;
+        partidaActiva = true;
+        iniciarClienteRpc();
     }
+}
 
     [Rpc(SendTo.ClientsAndHost)]
     public void iniciarClienteRpc()
@@ -52,6 +61,7 @@ public class GameManager : NetworkBehaviour
         {
             texto.iniciarPartida();
         }
+        if (txt_tiempo != null) txt_tiempo.gameObject.SetActive(true);
     }
 
 
@@ -111,5 +121,27 @@ public class GameManager : NetworkBehaviour
             nombresJugadores.Add(nombre);
         }
     }
+
+    private void Update()
+{
+    // Solo el servidor descuenta el tiempo
+    if (IsServer && partidaActiva)
+    {
+        tiempoRestante.Value -= Time.deltaTime;
+
+        if (tiempoRestante.Value <= 0f)
+        {
+            tiempoRestante.Value = 0f;
+            partidaActiva = false;
+            Debug.Log("Se acabó el tiempo"); // aquí irá el fin de partida en el siguiente paso
+        }
+    }
+
+    // Todos muestran el valor que el servidor sincroniza
+    if (txt_tiempo != null)
+    {
+        txt_tiempo.text = Mathf.CeilToInt(tiempoRestante.Value).ToString();
+    }
+}
 
 }
