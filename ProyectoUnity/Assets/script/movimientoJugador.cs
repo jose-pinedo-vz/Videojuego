@@ -17,7 +17,6 @@ public class JugadorMovimiento : NetworkBehaviour
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
         {
-            // Congela la rotación en X y Z para que el personaje nunca se incline
             rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
         }
     }
