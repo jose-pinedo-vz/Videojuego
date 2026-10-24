@@ -16,11 +16,12 @@ public class inicio : MonoBehaviour
  
     // variables 
     public static string nombre = "";
+    public TextMeshProUGUI txt_tiempo;
 
 
     // declaracionde componentes
     public GameObject Mapa3D;
-    public GameObject piso;
+    public GameObject Cochera;
     public TextMeshProUGUI txt_inicio;
     public TextMeshProUGUI txt_codigo;
     public TextMeshProUGUI txt_info;
@@ -63,15 +64,15 @@ public class inicio : MonoBehaviour
         // PanelHost.SetActive(false);
         // PanelSeleccion.SetActive(false);
         // PantallaDeCarga.SetActive(false);
-        PanelInicio.SetActive(false);
-        PanelCliente.SetActive(false);
-        PanelHost.SetActive(false);
-        PanelSeleccion.SetActive(false);
-        PantallaDeCarga.SetActive(false);
+        if (PanelInicio != null) PanelInicio.SetActive(false);
+        if (PanelCliente != null) PanelCliente.SetActive(false);
+        if (PanelHost != null) PanelHost.SetActive(false);
+        if (PanelSeleccion != null) PanelSeleccion.SetActive(false);
+        if (PantallaDeCarga != null) PantallaDeCarga.SetActive(false);
 
-
-        Mapa3D.SetActive(true);
-        piso.SetActive(true);
+        if (Mapa3D != null) Mapa3D.SetActive(true);
+        if (Cochera != null) Cochera.SetActive(true);
+        if (txt_tiempo != null) txt_tiempo.gameObject.SetActive(true);
 
         foreach (Red jugador in FindObjectsByType<Red>(FindObjectsSortMode.None))
         {
@@ -90,8 +91,12 @@ public class inicio : MonoBehaviour
     public void ocultarPaneles()
     {
         Mapa3D.SetActive(false);
-        piso.SetActive(false);
-        
+        Cochera.SetActive(false);
+        if (txt_tiempo != null)
+        {
+            txt_tiempo.gameObject.SetActive(false);
+        }
+
         // Ocultamos todos los paneles secundarios primero
         PanelSeleccion.SetActive(false);
         PanelHost.SetActive(false);

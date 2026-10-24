@@ -11,6 +11,17 @@ public class JugadorMovimiento : NetworkBehaviour
         controller = GetComponent<CharacterController>();
     }
 
+    void Start()
+    {
+        // Pega este bloque aquí adentro
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            // Congela la rotación en X y Z para que el personaje nunca se incline
+            rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+        }
+    }
+
     private void Update()
     {
         // VITAL: Si no soy el dueño de este personaje, no ejecuto el input del teclado

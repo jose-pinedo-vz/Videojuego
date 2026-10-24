@@ -2,6 +2,11 @@ using UnityEngine;
 using Unity.Netcode;
 using Unity.Collections;
 using TMPro;
+using UnityEngine.UI;
+using Unity.Services.Core;
+using Unity.Services.Authentication;
+
+
 
 public class GameManager : NetworkBehaviour 
 {
@@ -45,14 +50,19 @@ public class GameManager : NetworkBehaviour
 
 
     public void iniciarPartida()
-{
-    if (NetworkManager.Singleton.IsServer)
     {
-        tiempoRestante.Value = 60f;
-        partidaActiva = true;
-        iniciarClienteRpc();
+        if (NetworkManager.Singleton.IsServer)
+        {
+            
+            //txt_tiempo.SetActive(true);
+            // txt_tiempo.gameObject.SetActive(true);
+
+
+            tiempoRestante.Value = 60f;
+            partidaActiva = true;
+            iniciarClienteRpc();
+        }
     }
-}
 
     [Rpc(SendTo.ClientsAndHost)]
     public void iniciarClienteRpc()
@@ -78,6 +88,13 @@ public class GameManager : NetworkBehaviour
     {
         texto = FindFirstObjectByType<inicio>();
         nombresJugadores.OnListChanged += OnListaCambio;
+
+        if (txt_tiempo != null)
+        {
+            txt_tiempo.gameObject.SetActive(false);
+        }
+
+
         actualizarTexto();
     }
     
@@ -123,25 +140,25 @@ public class GameManager : NetworkBehaviour
     }
 
     private void Update()
-{
-    // Solo el servidor descuenta el tiempo
-    if (IsServer && partidaActiva)
     {
-        tiempoRestante.Value -= Time.deltaTime;
-
-        if (tiempoRestante.Value <= 0f)
+        // Solo el servidor descuenta el tiempo
+        if (IsServer && partidaActiva)
         {
-            tiempoRestante.Value = 0f;
-            partidaActiva = false;
-            Debug.Log("Se acabó el tiempo"); // aquí irá el fin de partida en el siguiente paso
+            tiempoRestante.Value -= Time.deltaTime;
+
+            if (tiempoRestante.Value <= 0f)
+            {
+                tiempoRestante.Value = 0f;
+                partidaActiva = false;
+                Debug.Log("Se acabó el tiempo"); 
+            }
+        }
+
+        // Todos muestran el valor que el servidor sincroniza
+        if (txt_tiempo != null)
+        {
+            txt_tiempo.text = Mathf.CeilToInt(tiempoRestante.Value).ToString();
         }
     }
-
-    // Todos muestran el valor que el servidor sincroniza
-    if (txt_tiempo != null)
-    {
-        txt_tiempo.text = Mathf.CeilToInt(tiempoRestante.Value).ToString();
-    }
-}
 
 }
