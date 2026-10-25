@@ -111,6 +111,7 @@ public class inicio : MonoBehaviour
         PanelHost.SetActive(false);
         PanelCliente.SetActive(false);
         PantallaDeCarga.SetActive(false);
+        PanelFin.SetActive(false);
 
         // Mantenemos únicamente el panel principal encendido
         PanelInicio.SetActive(true);
