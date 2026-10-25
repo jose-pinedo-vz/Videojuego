@@ -69,20 +69,20 @@ public class Personaje : NetworkBehaviour
         float movimiento = 0f;
         if (Keyboard.current.aKey.isPressed) 
         { 
-            movimiento = -1f;
+            movimiento = 1f;
         } 
         else if (Keyboard.current.dKey.isPressed) 
         {
-            movimiento = 1f; 
+            movimiento = -1f; 
         } //Agarra las teclas a,d o <-,->, para el movimiento
 
         if (movimiento>0)//Esto es para voltear al personaje, en caso de que le des a la izquierda que gire a la izquierda
         {
-            direccionPersonaje=1f;
+            direccionPersonaje=-1f;
         }
         else if (movimiento<0)
         {
-            direccionPersonaje=-1f;
+            direccionPersonaje=1f;
         }
 
         bool shiftPresionado = Keyboard.current.leftShiftKey.isPressed; //Si se mantiene presionao
