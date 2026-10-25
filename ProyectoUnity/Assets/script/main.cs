@@ -43,6 +43,19 @@ public class inicio : MonoBehaviour
 
     public void mostrarPanelFin()
     {
+
+        // terminar partid
+        if (Mapa3D != null) Mapa3D.SetActive(false);
+        if (Cochera != null) Cochera.SetActive(false);
+        if (txt_tiempo != null) txt_tiempo.gameObject.SetActive(false);
+
+        foreach (Red jugador in FindObjectsByType<Red>((FindObjectsSortMode.None)))
+        {
+            jugador.MostrarJugador(false);
+        }
+
+
+        // panel fin del juego
         if (PanelFin != null) PanelFin.SetActive(true);
     }
 

@@ -89,5 +89,13 @@ public class Red : NetworkBehaviour
             netTransform.Teleport(posicion, transform.rotation, transform.localScale);
 
         if (cc != null) cc.enabled = true;
+        Personaje p = GetComponent<Personaje>();
+        if (p != null) p.FijarSpawn(posicion);
+    }
+    [Rpc(SendTo.NotOwner)]
+    public void AvisarArmaRpc()
+    {
+        Arma arma = FindFirstObjectByType<Arma>();
+        if (arma != null) arma.AdjuntarA(transform.Find("Mano"), GetComponent<Personaje>());
     }
 }

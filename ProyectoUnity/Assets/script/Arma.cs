@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections;
 
 public class Arma : MonoBehaviour
 {
@@ -13,6 +14,7 @@ public class Arma : MonoBehaviour
     private Transform mano; //El objeto al que se pegara cuando el jugador lo agarre (debe ser invisible)
     private float tiempoUltimoDisparo=0f;
     private Personaje jugadorQueLaEquipo;
+    private LineRenderer trazo;
 
     [SerializeField] protected Vector3 rotacionEnMano = Vector3.zero; //Estos 2 son para controlar donde la va a agarrar 
     [SerializeField] protected Vector3 posicionEnMano = Vector3.zero; //Ocupare ayuda en esto porque es a mano, ojo de buen cubero y presicion
@@ -25,6 +27,9 @@ public class Arma : MonoBehaviour
             jugadorCerca = true;
             mano=other.transform.Find("Mano");
             Debug.Log("Cerca del arma, presiona C para recoger");
+
+            Personaje p = other.GetComponentInParent<Personaje>();
+            if (p == null || !p.IsOwner) return;
         }
     }
     protected virtual void OnTriggerExit(Collider other) //Pa saber que el jugador se alejo y ya no la esta tocando
@@ -32,6 +37,8 @@ public class Arma : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             jugadorCerca = false;
+            Personaje p = other.GetComponentInParent<Personaje>();
+            if (p == null || !p.IsOwner) return;
         }
     }
 
@@ -58,10 +65,23 @@ public class Arma : MonoBehaviour
         {
             jugador.armaEquipada = this; //Le dice al personaje "esta es tu arma ahora"
             jugadorQueLaEquipo=jugador; //Para solucionar un problema que tomo 3 horas resolver...
+            jugador.GetComponent<Red>().AvisarArmaRpc();
         }
     }
 
-public virtual void Disparar()
+    private IEnumerator MostrarTrazo(Vector3 inicio, Vector3 fin)
+    {
+        if (trazo == null) trazo = GetComponent<LineRenderer>();
+        if (trazo == null) yield break;
+        trazo.positionCount = 2;
+        trazo.SetPosition(0, inicio);
+        trazo.SetPosition(1, fin);
+        trazo.enabled = true;
+        yield return new WaitForSeconds(0.1f);
+        trazo.enabled = false;
+    }
+
+    public virtual void Disparar()
     {
         //¿Esta disparando muy rapido?
         if (Time.time < tiempoUltimoDisparo + (1f / Cadencia))
@@ -84,22 +104,36 @@ public virtual void Disparar()
 
         Debug.DrawRay(transform.position, direccionDisparo * Alcance, Color.red, 2f);
 
+
+        Vector3 puntoFinal = transform.position + direccionDisparo.normalized * Alcance;
         RaycastHit impacto;
 
         //Lanza el rayo para impactar Parametros(Origen ,   Direccon    ,   Resultado(Esta guardando que golpeo)   ,   Distancia)
         if (Physics.Raycast(transform.position, direccionDisparo, out impacto, Alcance))
         {
+            puntoFinal = impacto.point;
             Debug.Log("Le diste a: " + impacto.collider.name + " en la posicion: " + impacto.point);
 
             Personaje personajeGolpeado = impacto.collider.GetComponent<Personaje>();
-            if (personajeGolpeado != null)
+            if (personajeGolpeado != null && personajeGolpeado != jugadorQueLaEquipo)
             {
                 personajeGolpeado.RecibirDaño(jugadorQueLaEquipo);
             }
         }
         else
         {
+            StartCoroutine(MostrarTrazo(transform.position, puntoFinal));
             Debug.Log("Fallaste");
         }
+    }
+    public void AdjuntarA(Transform nuevaMano, Personaje jugador)
+    {
+        mano = nuevaMano;
+        transform.parent = mano;
+        transform.localPosition = posicionEnMano;
+        transform.localRotation = Quaternion.Euler(rotacionEnMano);
+        GetComponent<Collider>().enabled = false;
+        jugador.armaEquipada = this;
+        jugadorQueLaEquipo = jugador;
     }
 }

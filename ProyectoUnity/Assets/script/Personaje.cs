@@ -184,16 +184,32 @@ public class Personaje : NetworkBehaviour
     {
         Debug.Log("Auch, me dio: "+atacante);
         morir(atacante);
+        MorirDuenioRpc();
+    }
+
+    [Rpc(SendTo.Owner)]
+    private void MorirDuenioRpc()
+    {
+        morir(null);
     }
 
     public virtual void morir(Personaje atacante)
     {
-        atacante.muertes++;//Se le da un punto al que lo mato 
+        //atacante.muertes++;//Se le da un punto al que lo mato 
+        //atacante.muertes++;
+        if (atacante != null) atacante.muertes++;
         
         controlador.enabled=false;//Se desactiva al personaje controller para que no haya broncas
 
         transform.position=posicionInicial; //Se envia al personaje a su posicion de spawn
+        var nt = GetComponent<Unity.Netcode.Components.NetworkTransform>();
+        if (nt != null) nt.Teleport(posicionInicial, transform.rotation, transform.localScale);
+
         velocidadCaida=Vector3.zero; //Para que no haya problemas raros con la velocidad de caida
         controlador.enabled=true;
+    }
+    public void FijarSpawn(Vector3 pos)
+    {
+        posicionInicial = pos;
     }
 }
