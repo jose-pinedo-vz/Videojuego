@@ -151,6 +151,8 @@ public class GameManager : NetworkBehaviour
                 tiempoRestante.Value = 0f;
                 partidaActiva = false;
                 Debug.Log("Se acabó el tiempo"); 
+                //if (texto != null) texto.mostrarPanelFin();
+                finPartidaClienteRpc();  
             }
         }
 
@@ -159,6 +161,12 @@ public class GameManager : NetworkBehaviour
         {
             txt_tiempo.text = Mathf.CeilToInt(tiempoRestante.Value).ToString();
         }
+    }
+
+    [Rpc(SendTo.ClientsAndHost)]
+    public void finPartidaClienteRpc()
+    {
+        if (texto != null) texto.mostrarPanelFin();
     }
 
 }

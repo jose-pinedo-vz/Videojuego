@@ -13,6 +13,7 @@ public class inicio : MonoBehaviour
     [SerializeField] private GameObject PanelHost;
     [SerializeField] private GameObject PanelCliente;
     [SerializeField] private GameObject PantallaDeCarga;
+    [SerializeField] public GameObject PanelFin;
  
     // variables 
     public static string nombre = "";
@@ -39,6 +40,11 @@ public class inicio : MonoBehaviour
     // otras clases 
     public NetWork net;
     public Red red;
+
+    public void mostrarPanelFin()
+    {
+        if (PanelFin != null) PanelFin.SetActive(true);
+    }
 
 
     public void iniciarPartidaBoton()
@@ -69,6 +75,9 @@ public class inicio : MonoBehaviour
         if (PanelHost != null) PanelHost.SetActive(false);
         if (PanelSeleccion != null) PanelSeleccion.SetActive(false);
         if (PantallaDeCarga != null) PantallaDeCarga.SetActive(false);
+
+        //if (PanelFIn != null) PanelFin.SetActive(false);
+        if (PanelFin != null) PanelFin.SetActive(false);
 
         if (Mapa3D != null) Mapa3D.SetActive(true);
         if (Cochera != null) Cochera.SetActive(true);
