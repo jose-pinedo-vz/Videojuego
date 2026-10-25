@@ -1749,6 +1749,7 @@ MonoBehaviour:
   PanelHost: {fileID: 1116228981}
   PanelCliente: {fileID: 476687620}
   PantallaDeCarga: {fileID: 1394294786}
+  PanelFin: {fileID: 1538383288}
   txt_tiempo: {fileID: 1615479615}
   Mapa3D: {fileID: 1973020857}
   Cochera: {fileID: 1089612248}
