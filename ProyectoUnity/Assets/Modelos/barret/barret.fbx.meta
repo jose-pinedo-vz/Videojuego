@@ -3,7 +3,32 @@ guid: 2355886fe9be62f46b1c6bea7c8b67ea
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Detalle
+    second: {fileID: 2100000, guid: 99fcd9210c3f69d4a9ceb3efa5328829, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Metal culero
+    second: {fileID: 2100000, guid: 4de6ea8a34cf6e94080a5eb452554640, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Metal fino.barret
+    second: {fileID: 2100000, guid: 30421ce5975e0334189727d3dde9068e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Polimero
+    second: {fileID: 2100000, guid: 09fdfefb8f3a8b84299a86a1109e68a2, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Vidrio
+    second: {fileID: 2100000, guid: 89a864697a4548a44b124f3a243ae9b9, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
