@@ -17,9 +17,14 @@ public class Personaje : NetworkBehaviour
 
 
     protected float direccionPersonaje=1f;
-    protected bool estaDeslizando=false; 
+    protected bool estaDeslizando=false;
     protected bool estaAgachado=false;
-    protected CharacterController controlador; 
+    protected CharacterController controlador;
+
+    public bool EstaDeslizando => estaDeslizando;
+    public bool EnSuelo        => controlador != null && controlador.isGrounded;
+    public bool EstaAgachado   => estaAgachado;
+
     protected Vector3 velocidadCaida; //variable para ver si esta callendo o para mover en el eje y
     public Arma armaEquipada; //Para saber que arma esta usando
     protected Vector3 posicionInicial;
@@ -28,15 +33,18 @@ public class Personaje : NetworkBehaviour
     public NetworkVariable<int> bajas = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     // estado de animacion: el duenio lo escribe y todos lo aplican a su Animator, asi los demas ven las animaciones
-    private NetworkVariable<float> animMovimiento = new NetworkVariable<float>(0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
-    private NetworkVariable<bool> animEnSuelo = new NetworkVariable<bool>(true, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
-    private NetworkVariable<bool> animSaltar = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
-    private NetworkVariable<bool> animDeslizando = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
-    private NetworkVariable<bool> animAgachado = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<float> animMovimiento  = new NetworkVariable<float>(0f,    NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<bool>  animEnSuelo      = new NetworkVariable<bool>(true,  NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<bool>  animSaltar       = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<bool>  animDeslizando   = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<bool>  animAgachado     = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<bool>  animCorriendo    = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
     protected Animator animator;
     // nombre en minusculas -> hash del parametro real, para que "saltar" encuentre "Saltar" y "estaEnSuelo" encuentre "EstaEnSuelo"
     private Dictionary<string, int> parametrosAnimator = new Dictionary<string, int>();
+    // para detectar el flanco ascendente de animSaltar (Trigger, no Bool en el controller nuevo)
+    private bool prevAnimSaltar = false;
 
 //==================================================================Cositas Obligatorias por C#====================================================================
     protected virtual void Awake() //Siempre es la primera funcion que se llama
@@ -118,6 +126,8 @@ public class Personaje : NetworkBehaviour
         // gira al personaje en Y para que transform.right (hacia donde dispara el arma) apunte a donde camina
         transform.rotation = Quaternion.Euler(0f, direccionPersonaje > 0 ? 0f : 180f, 0f);
         animMovimiento.Value = Mathf.Abs(movimiento);
+        // estaCorriendo: se mueve horizontalmente sin deslizarse
+        animCorriendo.Value = (movimiento != 0f) && !estaDeslizando;
 
         bool shiftPresionado = Keyboard.current.leftShiftKey.isPressed; //Si se mantiene presionao
         bool shiftRecienPresionado = Keyboard.current.leftShiftKey.wasPressedThisFrame; //Si solo lo presiono una vez
@@ -126,7 +136,7 @@ public class Personaje : NetworkBehaviour
         {
             if (movimiento != 0f) //Y no estaba quieto
             {
-                Deslizar(direccionPersonaje); //Desliza
+                Deslizar(movimiento); //Desliza
                 return;
             }
             else //Sisi estaba quieto
@@ -208,25 +218,35 @@ public class Personaje : NetworkBehaviour
         animAgachado.Value = agachar;
         Debug.Log("Agachado");
     }
-    void LateUpdate()//Fuerza al personaje a estar siempre en el plano z
+    void LateUpdate()
     {
-        // Vector3 pos = transform.position;
-        // pos.z = 0f;
-        // transform.position = pos;
+        // Rotación garantizada cada frame (Blaidmir: asegura orientación correcta fuera de Mover)
+        if (direccionPersonaje < 0f)       transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+        else if (direccionPersonaje > 0f)  transform.rotation = Quaternion.Euler(0f, 0f,   0f);
 
-        ActualizarAnimator(); // corre en todas las PCs, no solo en la del duenio
+        // AnimadorPuente maneja el Animator del dueño directamente.
+        // Aquí solo actualizamos para los clientes que observan a este jugador.
+        ActualizarAnimator();
     }
 
-    // pasa el estado sincronizado al Animator local
+    // Aplica el estado sincronizado al Animator local.
+    // En el dueño, AnimadorPuente ya lo hace; aquí manejamos los parámetros que solo
+    // Personaje conoce (por NetworkVariable) para que todos los observadores vean
+    // las animaciones correctas.
     private void ActualizarAnimator()
     {
         if (animator == null || !IsSpawned) return;
+        if (IsOwner) return; // el dueño usa AnimadorPuente que lo maneja con input directo
 
-        AsignarFloat("movimiento", animMovimiento.Value);
-        AsignarBool("estaEnSuelo", animEnSuelo.Value);
-        AsignarBool("saltar", animSaltar.Value);
+        AsignarFloat("movimiento",    animMovimiento.Value);
+        AsignarBool("EstaEnSuelo",    animEnSuelo.Value);
         AsignarBool("estaDeslizando", animDeslizando.Value);
-        AsignarBool("estaAgachado", animAgachado.Value);
+        AsignarBool("estaAgachado",   animAgachado.Value);
+        AsignarBool("estaCorriendo",  animCorriendo.Value);
+
+        // Saltar es Trigger en el controller nuevo: disparar solo en el flanco ascendente
+        if (animSaltar.Value && !prevAnimSaltar) AsignarTrigger("Saltar");
+        prevAnimSaltar = animSaltar.Value;
     }
 
     private void AsignarFloat(string nombre, float valor)
@@ -237,6 +257,11 @@ public class Personaje : NetworkBehaviour
     private void AsignarBool(string nombre, bool valor)
     {
         if (parametrosAnimator.TryGetValue(nombre.ToLower(), out int hash)) animator.SetBool(hash, valor);
+    }
+
+    private void AsignarTrigger(string nombre)
+    {
+        if (parametrosAnimator.TryGetValue(nombre.ToLower(), out int hash)) animator.SetTrigger(hash);
     }
 
     

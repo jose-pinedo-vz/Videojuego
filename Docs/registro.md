@@ -59,3 +59,37 @@ Ver `pendientes.md` para los pasos que requieren el editor de Unity:
 - Crear 4+ puntos de spawn de armas en Mapa3D y asignarlos al GestorArmas.
 - Agregar el componente GestorArmas al objeto GameManager en la escena.
 - Asignar todas las armas de la escena al array `todasLasArmas` del GestorArmas.
+
+---
+
+## [2026-10-27] — Merge: animaciones de Blaidmir + corrección de bugs de integración
+
+### Cambios de Blaidmir (commit 5956aad)
+- **`AnimadorPuente.cs`** (nuevo): maneja el Animator del dueño directamente desde input,
+  sin pasar por NetworkVariables. Solo corre en el dueño (o en escena de prueba sin red).
+  Usa las propiedades públicas `Personaje.EnSuelo` y `Personaje.EstaDeslizando`.
+- **`Personaje.cs`**: expone `EstaDeslizando`, `EnSuelo` y corrige `Deslizar(movimiento)`.
+  Agrega rotación en `LateUpdate` como respaldo.
+- **`PersonajeAnimator.controller`**: `Saltar` cambiado de Bool a **Trigger** (m_Type=9).
+  Nuevo parámetro `estaCorriendo` (Bool). Animaciones renombradas:
+  `salto corriendo` → `horizontal jump`, `salto vertical` → `vertical jump`.
+  Animaciones `Fast Run` y `Running Slide` actualizadas.
+
+### Bugs corregidos en la integración
+1. **`Saltar` era Bool, ahora es Trigger** — `Personaje.ActualizarAnimator()` usaba
+   `SetBool("saltar", ...)` que no dispara Triggers. Ahora detecta el flanco ascendente
+   de `animSaltar` y llama `SetTrigger("Saltar")` en clientes observadores.
+   `AnimadorPuente` ya usaba `SetTrigger` correctamente para el dueño.
+
+2. **Doble manejo del Animator** — Antes, tanto `Personaje.ActualizarAnimator()` como
+   `AnimadorPuente` escribían parámetros en el mismo Animator del dueño, potencialmente
+   pisándose. Ahora `ActualizarAnimator()` se salta al dueño (`if (IsOwner) return`);
+   `AnimadorPuente` maneja al dueño, `ActualizarAnimator` maneja a los observadores.
+
+3. **`estaCorriendo` no sincronizado** — `AnimadorPuente` calculaba `estaCorriendo` local
+   pero no lo subía a red. Se agregó `animCorriendo: NetworkVariable<bool>` a `Personaje`,
+   se setea en `Mover()`, y `ActualizarAnimator()` lo aplica en observadores.
+
+4. **`estaAgachado` no seteado en el dueño** — Con el cambio (2), el dueño ya no pasa
+   por `ActualizarAnimator`. Se agregó `Personaje.EstaAgachado` como propiedad pública
+   y `AnimadorPuente` ahora la lee y setea `"estaAgachado"` en el Animator del dueño.
