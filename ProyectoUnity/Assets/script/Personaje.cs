@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections;
+using System.Collections.Generic;
 using Unity.Netcode;
 
 //public class Personaje : MonoBehaviour
@@ -23,11 +24,34 @@ public class Personaje : NetworkBehaviour
     public Arma armaEquipada; //Para saber que arma esta usando
     protected Vector3 posicionInicial;
 
+    // bajas (kills) del jugador, solo el servidor las escribe y todos las leen para el marcador
+    public NetworkVariable<int> bajas = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
+    // estado de animacion: el duenio lo escribe y todos lo aplican a su Animator, asi los demas ven las animaciones
+    private NetworkVariable<float> animMovimiento = new NetworkVariable<float>(0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<bool> animEnSuelo = new NetworkVariable<bool>(true, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<bool> animSaltar = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<bool> animDeslizando = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<bool> animAgachado = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
+    protected Animator animator;
+    // nombre en minusculas -> hash del parametro real, para que "saltar" encuentre "Saltar" y "estaEnSuelo" encuentre "EstaEnSuelo"
+    private Dictionary<string, int> parametrosAnimator = new Dictionary<string, int>();
+
 //==================================================================Cositas Obligatorias por C#====================================================================
     protected virtual void Awake() //Siempre es la primera funcion que se llama
     {
-        controlador=GetComponent<CharacterController>(); //Es para los controladores de personaje, como controlar cuando esta chocando con tro objeto 
+        controlador=GetComponent<CharacterController>(); //Es para los controladores de personaje, como controlar cuando esta chocando con tro objeto
         posicionInicial = transform.position; //Hace que se tome la posicion en la que empezo el jugador
+
+        animator = GetComponentInChildren<Animator>(); // sirve si el Animator esta en el cuerpo o en el modelo hijo
+        if (animator != null && animator.runtimeAnimatorController != null)
+        {
+            foreach (AnimatorControllerParameter parametro in animator.parameters)
+            {
+                parametrosAnimator[parametro.name.ToLower()] = parametro.nameHash;
+            }
+        }
     }
     protected virtual void Update() //Se actualiza siempre lo que esta dentro de esta funcion
     {
@@ -55,8 +79,15 @@ public class Personaje : NetworkBehaviour
             armaEquipada.Disparar();
         }
 
+        // el salto termina cuando vuelve a tocar el suelo
+        animEnSuelo.Value = controlador.isGrounded;
+        if (controlador.isGrounded && velocidadCaida.y <= 0f)
+        {
+            animSaltar.Value = false;
+        }
+
         //LateUpdate();
-    }   
+    }
 //================================================================================================================================================================
 
 
@@ -78,12 +109,15 @@ public class Personaje : NetworkBehaviour
 
         if (movimiento>0)//Esto es para voltear al personaje, en caso de que le des a la izquierda que gire a la izquierda
         {
-            direccionPersonaje=-1f;
+            direccionPersonaje=1f; // misma direccion que el movimiento, si no el slide sale para el lado contrario
         }
         else if (movimiento<0)
         {
-            direccionPersonaje=1f;
+            direccionPersonaje=-1f;
         }
+        // gira al personaje en Y para que transform.right (hacia donde dispara el arma) apunte a donde camina
+        transform.rotation = Quaternion.Euler(0f, direccionPersonaje > 0 ? 0f : 180f, 0f);
+        animMovimiento.Value = Mathf.Abs(movimiento);
 
         bool shiftPresionado = Keyboard.current.leftShiftKey.isPressed; //Si se mantiene presionao
         bool shiftRecienPresionado = Keyboard.current.leftShiftKey.wasPressedThisFrame; //Si solo lo presiono una vez
@@ -107,7 +141,8 @@ public class Personaje : NetworkBehaviour
         }
 
         Vector3 direccion=new Vector3(movimiento,0f,0f); //Transforma el valor del movimiento (1 o -1) en un valor vectorial para que se mueva en esa direccion
-        controlador.Move(direccion*velocidad*Time.deltaTime); //Esta es la instruccion para que se mueva, hacia la direccion dada, con la velocidad dada y en cierto numero de frames
+        float velocidadActual = estaAgachado ? velicidadAgachado : velocidad; // agachado camina mas lento
+        controlador.Move(direccion*velocidadActual*Time.deltaTime); //Esta es la instruccion para que se mueva, hacia la direccion dada, con la velocidad dada y en cierto numero de frames
 
     }
     //TERMINADO GRAVEDAD
@@ -130,6 +165,7 @@ public class Personaje : NetworkBehaviour
         //falta hacer que cuando salte apunte hacia arriba
         //Debug.Log("Arriba");
         velocidadCaida.y=salto;
+        animSaltar.Value = true;
         //Como ya tenemos la gravedad y la variable velocidadCaida.y que es practicamente la posicion del personaje en y 
         //solo hacemos que el personaje cambie esa posoicion aprovechando esta variable
     }
@@ -146,6 +182,8 @@ public class Personaje : NetworkBehaviour
     {
         //Debug.Log("Wiii");
         estaDeslizando=true;
+        animDeslizando.Value = true;
+        animMovimiento.Value = 1f;
         Quaternion rotacionOriginal=transform.rotation; //Guardar como estaba antes de deslizarse
         float tiempoTranscurrido = 0f;
         while (tiempoTranscurrido < duracionDeslizar)
@@ -157,6 +195,7 @@ public class Personaje : NetworkBehaviour
             yield return null; //Espera al siguiente frame y sigue el ciclo para que se vea la animacion en un futuro
         }
         estaDeslizando = false;
+        animDeslizando.Value = false;
 
         if (Keyboard.current.leftShiftKey.isPressed) //Si no dejo de presionar shift se queda agachado
         {
@@ -166,6 +205,7 @@ public class Personaje : NetworkBehaviour
     protected virtual void Agachar(bool agachar)
     {
         estaAgachado=agachar;
+        animAgachado.Value = agachar;
         Debug.Log("Agachado");
     }
     void LateUpdate()//Fuerza al personaje a estar siempre en el plano z
@@ -173,6 +213,30 @@ public class Personaje : NetworkBehaviour
         // Vector3 pos = transform.position;
         // pos.z = 0f;
         // transform.position = pos;
+
+        ActualizarAnimator(); // corre en todas las PCs, no solo en la del duenio
+    }
+
+    // pasa el estado sincronizado al Animator local
+    private void ActualizarAnimator()
+    {
+        if (animator == null || !IsSpawned) return;
+
+        AsignarFloat("movimiento", animMovimiento.Value);
+        AsignarBool("estaEnSuelo", animEnSuelo.Value);
+        AsignarBool("saltar", animSaltar.Value);
+        AsignarBool("estaDeslizando", animDeslizando.Value);
+        AsignarBool("estaAgachado", animAgachado.Value);
+    }
+
+    private void AsignarFloat(string nombre, float valor)
+    {
+        if (parametrosAnimator.TryGetValue(nombre.ToLower(), out int hash)) animator.SetFloat(hash, valor);
+    }
+
+    private void AsignarBool(string nombre, bool valor)
+    {
+        if (parametrosAnimator.TryGetValue(nombre.ToLower(), out int hash)) animator.SetBool(hash, valor);
     }
 
     
@@ -183,8 +247,28 @@ public class Personaje : NetworkBehaviour
     public virtual void RecibirDaño(Personaje atacante)
     {
         Debug.Log("Auch, me dio: "+atacante);
-        morir(atacante);
-        MorirDuenioRpc();
+        // se le avisa al servidor, que es quien cuenta la baja y manda a morir al duenio de este personaje
+        if (atacante != null) atacante.ReportarImpactoRpc(NetworkObject);
+        else MorirDuenioRpc();
+    }
+
+    // lo llama el que disparo, se ejecuta en el servidor
+    [Rpc(SendTo.Server)]
+    private void ReportarImpactoRpc(NetworkObjectReference referenciaVictima)
+    {
+        if (!referenciaVictima.TryGet(out NetworkObject objetoVictima)) return;
+        Personaje victima = objetoVictima.GetComponent<Personaje>();
+        if (victima == null || victima == this) return;
+
+        bajas.Value++; //Se le da un punto al que lo mato
+        victima.MorirDuenioRpc();
+    }
+
+    // el trazo del disparo para que lo vean los demas jugadores
+    [Rpc(SendTo.NotMe)]
+    public void MostrarDisparoRpc(Vector3 inicio, Vector3 fin)
+    {
+        if (armaEquipada != null) armaEquipada.MostrarDisparo(inicio, fin);
     }
 
     [Rpc(SendTo.Owner)]

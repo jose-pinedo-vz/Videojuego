@@ -24,21 +24,23 @@ public class Arma : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
-            jugadorCerca = true;
-            mano=other.transform.Find("Mano");
-            Debug.Log("Cerca del arma, presiona C para recoger");
-
+            // solo cuenta el jugador de esta PC, si no un jugador remoto cerca te deja recoger el arma a ti
             Personaje p = other.GetComponentInParent<Personaje>();
             if (p == null || !p.IsOwner) return;
+
+            jugadorCerca = true;
+            mano=p.transform.Find("Mano");
+            Debug.Log("Cerca del arma, presiona C para recoger");
         }
     }
     protected virtual void OnTriggerExit(Collider other) //Pa saber que el jugador se alejo y ya no la esta tocando
     {
         if (other.CompareTag("Player"))
         {
-            jugadorCerca = false;
             Personaje p = other.GetComponentInParent<Personaje>();
             if (p == null || !p.IsOwner) return;
+
+            jugadorCerca = false;
         }
     }
 
@@ -59,14 +61,21 @@ public class Arma : MonoBehaviour
         transform.localPosition=posicionEnMano; //En donde se va a quedar agarrada
         transform.localRotation=Quaternion.Euler(rotacionEnMano);//Controlar a donde apunta
 
-        GetComponent<Collider>().enabled=false;//Desabilita OnTriggerExit y Enter para que no se la puedan robar (¿Seria interesante si se pudiera?) 
+        GetComponent<Collider>().enabled=false;//Desabilita OnTriggerExit y Enter para que no se la puedan robar (¿Seria interesante si se pudiera?)
+        jugadorCerca = false; // con el collider apagado OnTriggerExit ya no se llama, si no se podia recoger otra vez
         Personaje jugador = mano.GetComponentInParent<Personaje>(); //Busca el script Personaje subiendo desde la mano
         if (jugador != null)
         {
             jugador.armaEquipada = this; //Le dice al personaje "esta es tu arma ahora"
             jugadorQueLaEquipo=jugador; //Para solucionar un problema que tomo 3 horas resolver...
-            jugador.GetComponent<Red>().AvisarArmaRpc();
+            jugador.GetComponent<Red>().AvisarArmaRpc(gameObject.name); // por nombre, para que los demas peguen esta misma arma
         }
+    }
+
+    // para que los demas jugadores vean el trazo de un disparo que no es suyo
+    public void MostrarDisparo(Vector3 inicio, Vector3 fin)
+    {
+        StartCoroutine(MostrarTrazo(inicio, fin));
     }
 
     private IEnumerator MostrarTrazo(Vector3 inicio, Vector3 fin)
@@ -102,19 +111,24 @@ public class Arma : MonoBehaviour
 
         //Debug.Log("Disparo desde: " + transform.position + " hacia direccion: " + direccionDisparo);
 
-        Debug.DrawRay(transform.position, direccionDisparo * Alcance, Color.red, 2f);
+        // el rayo sale a la altura del arma pero en el mismo plano Z que el jugador,
+        // si no, por el offset de la mano en Z, el rayo pasa por delante/detras de los demas sin tocarlos
+        Vector3 origen = transform.position;
+        if (jugadorQueLaEquipo != null) origen.z = jugadorQueLaEquipo.transform.position.z;
+
+        Debug.DrawRay(origen, direccionDisparo * Alcance, Color.red, 2f);
 
 
-        Vector3 puntoFinal = transform.position + direccionDisparo.normalized * Alcance;
+        Vector3 puntoFinal = origen + direccionDisparo.normalized * Alcance;
         RaycastHit impacto;
 
         //Lanza el rayo para impactar Parametros(Origen ,   Direccon    ,   Resultado(Esta guardando que golpeo)   ,   Distancia)
-        if (Physics.Raycast(transform.position, direccionDisparo, out impacto, Alcance))
+        if (Physics.Raycast(origen, direccionDisparo, out impacto, Alcance))
         {
             puntoFinal = impacto.point;
             Debug.Log("Le diste a: " + impacto.collider.name + " en la posicion: " + impacto.point);
 
-            Personaje personajeGolpeado = impacto.collider.GetComponent<Personaje>();
+            Personaje personajeGolpeado = impacto.collider.GetComponentInParent<Personaje>(); // por si el collider esta en un hijo
             if (personajeGolpeado != null && personajeGolpeado != jugadorQueLaEquipo)
             {
                 personajeGolpeado.RecibirDaño(jugadorQueLaEquipo);
@@ -122,9 +136,12 @@ public class Arma : MonoBehaviour
         }
         else
         {
-            StartCoroutine(MostrarTrazo(transform.position, puntoFinal));
             Debug.Log("Fallaste");
         }
+
+        // el trazo se ve siempre (antes solo al fallar) y tambien en las PCs de los demas
+        StartCoroutine(MostrarTrazo(transform.position, puntoFinal));
+        if (jugadorQueLaEquipo != null) jugadorQueLaEquipo.MostrarDisparoRpc(transform.position, puntoFinal);
     }
     public void AdjuntarA(Transform nuevaMano, Personaje jugador)
     {

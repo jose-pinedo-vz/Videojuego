@@ -93,9 +93,17 @@ public class Red : NetworkBehaviour
         if (p != null) p.FijarSpawn(posicion);
     }
     [Rpc(SendTo.NotOwner)]
-    public void AvisarArmaRpc()
+    public void AvisarArmaRpc(string nombreArma)
     {
-        Arma arma = FindFirstObjectByType<Arma>();
-        if (arma != null) arma.AdjuntarA(transform.Find("Mano"), GetComponent<Personaje>());
+        // se busca por nombre porque las armas no son NetworkObject; cada arma en la escena debe tener nombre unico
+        foreach (Arma arma in FindObjectsByType<Arma>(FindObjectsSortMode.None))
+        {
+            if (arma.name == nombreArma)
+            {
+                arma.AdjuntarA(transform.Find("Mano"), GetComponent<Personaje>());
+                return;
+            }
+        }
+        Debug.LogWarning("No se encontro el arma: " + nombreArma);
     }
 }

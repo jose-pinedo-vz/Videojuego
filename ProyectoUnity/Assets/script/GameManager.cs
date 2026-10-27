@@ -60,6 +60,13 @@ public class GameManager : NetworkBehaviour
 
             tiempoRestante.Value = 60f;
             partidaActiva = true;
+
+            // marcador en cero al empezar
+            foreach (Personaje p in FindObjectsByType<Personaje>(FindObjectsSortMode.None))
+            {
+                p.bajas.Value = 0;
+            }
+
             iniciarClienteRpc();
         }
     }

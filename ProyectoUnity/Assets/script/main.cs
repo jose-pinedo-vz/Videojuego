@@ -28,6 +28,7 @@ public class inicio : MonoBehaviour
     public TextMeshProUGUI txt_info;
     public TextMeshProUGUI txt_nombres;
     public TextMeshProUGUI txt_outputPlayers;
+    public TextMeshProUGUI txt_resultados; // texto dentro de PanelFin para el marcador
     public Button btn_iniciar;
     public Button btn_crearSala; 
     public Button btn_UnirmeSale;
@@ -54,9 +55,34 @@ public class inicio : MonoBehaviour
             jugador.MostrarJugador(false);
         }
 
+        if (txt_resultados != null) txt_resultados.text = armarMarcador();
 
         // panel fin del juego
         if (PanelFin != null) PanelFin.SetActive(true);
+    }
+
+    // lista de jugadores ordenada por bajas, el primero es el ganador
+    private string armarMarcador()
+    {
+        Personaje[] jugadores = FindObjectsByType<Personaje>(FindObjectsSortMode.None);
+        System.Array.Sort(jugadores, (a, b) => b.bajas.Value.CompareTo(a.bajas.Value));
+
+        string marcador = "";
+        foreach (Personaje p in jugadores)
+        {
+            Red r = p.GetComponent<Red>();
+            string nombreJugador = r != null ? r.nombreJugador.Value.ToString() : p.name;
+            marcador += nombreJugador + "  -  " + p.bajas.Value + " bajas\n";
+        }
+
+        if (jugadores.Length > 0)
+        {
+            bool empate = jugadores.Length > 1 && jugadores[0].bajas.Value == jugadores[1].bajas.Value;
+            Red ganador = jugadores[0].GetComponent<Red>();
+            string titulo = empate ? "Empate" : "Gana: " + (ganador != null ? ganador.nombreJugador.Value.ToString() : jugadores[0].name);
+            marcador = titulo + "\n\n" + marcador;
+        }
+        return marcador;
     }
 
 
@@ -155,6 +181,16 @@ public class inicio : MonoBehaviour
     public void salir()
     {
         Debug.Log("Salir");
+        // cierra la conexion antes de salir para que los demas vean que se fue
+        if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
+        {
+            NetworkManager.Singleton.Shutdown();
+        }
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 
     // crear host
@@ -172,7 +208,7 @@ public class inicio : MonoBehaviour
         
         //NetWork.iniciarHost();
         string code=await net.iniciarRelay();
-        txt_codigo.text = "Code: " + code;
+        txt_codigo.text = code != null ? "Code: " + code : "No se pudo crear la sala, revisa tu conexion";
 
         
     }
@@ -202,6 +238,10 @@ public class inicio : MonoBehaviour
             PanelCliente.SetActive(false);
             PantallaDeCarga.SetActive(true);
             //PanelPantallaDeCarga.SetActive(true);
+        }
+        else
+        {
+            txt_info.text = "Codigo invalido o la sala no existe";
         }
     }
 
