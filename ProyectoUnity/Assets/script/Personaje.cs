@@ -279,10 +279,17 @@ public class Personaje : NetworkBehaviour
 
     public virtual void morir(Personaje atacante)
     {
-        //atacante.muertes++;//Se le da un punto al que lo mato 
+        //atacante.muertes++;//Se le da un punto al que lo mato
         //atacante.muertes++;
         if (atacante != null) atacante.muertes++;
-        
+
+        // Soltar arma antes de teletransportarse para que no se vaya con el jugador
+        if (armaEquipada != null)
+        {
+            SoltarArmaServRpc(armaEquipada.gameObject.name);
+            armaEquipada = null;
+        }
+
         controlador.enabled=false;//Se desactiva al personaje controller para que no haya broncas
 
         transform.position=posicionInicial; //Se envia al personaje a su posicion de spawn
@@ -291,6 +298,14 @@ public class Personaje : NetworkBehaviour
 
         velocidadCaida=Vector3.zero; //Para que no haya problemas raros con la velocidad de caida
         controlador.enabled=true;
+    }
+
+    // El dueño le avisa al servidor qué arma soltar, el servidor llama a GestorArmas
+    [Rpc(SendTo.Server)]
+    private void SoltarArmaServRpc(string nombreArma)
+    {
+        GestorArmas ga = GestorArmas.Instancia;
+        if (ga != null) ga.SoltarArma(nombreArma);
     }
     public void FijarSpawn(Vector3 pos)
     {

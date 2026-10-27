@@ -153,4 +153,26 @@ public class Arma : MonoBehaviour
         jugador.armaEquipada = this;
         jugadorQueLaEquipo = jugador;
     }
+
+    // Suelta el arma: la desancla del jugador y la coloca en posicion (el suelo)
+    // Lo llama GestorArmas en todos los clientes cuando el jugador muere
+    public void Soltar(Vector3 posicion)
+    {
+        // Limpiar referencia del jugador que la tenía
+        if (jugadorQueLaEquipo != null)
+        {
+            if (jugadorQueLaEquipo.armaEquipada == this)
+                jugadorQueLaEquipo.armaEquipada = null;
+            jugadorQueLaEquipo = null;
+        }
+        mano = null;
+        jugadorCerca = false;
+
+        transform.parent = null;
+        transform.position = posicion;
+        transform.rotation = Quaternion.identity; // orientación neutra en el suelo
+
+        Collider col = GetComponent<Collider>();
+        if (col != null) col.enabled = true;
+    }
 }

@@ -18,9 +18,29 @@
 7. (Opcional) Unificar nombres de parámetros del Animator con el documento: `EstaEnSuelo` → `estaEnSuelo`,
    `Saltar` → `saltar`. El código acepta ambas formas.
 
+## Hacer en el editor — spawns y armas (cambios del 2026-10-27)
+
+8. **6 spawns de jugador adicionales** — dentro de `Mapa3D` crear 6 GameObjects vacíos (`spawn3` a `spawn8`)
+   en posiciones separadas del mapa. Arrastrarlos al arreglo `puntosDeSpawn` del componente `GameManager`
+   (junto a los ya existentes `spawn1` y `spawn2`, total **8**). El código ya elige uno al azar.
+
+9. **GestorArmas en la escena** — agregar el script `GestorArmas` al objeto `GameManager ` (el que ya existe).
+   - En `todasLasArmas`: arrastrar TODOS los objetos de arma que estén en la escena (`barret`, `ak47`, y los que se agreguen).
+   - En `maxArmasActivas`: dejar en 4 (o cambiar según se quiera).
+
+10. **Puntos de spawn de armas** — crear 6–8 GameObjects vacíos en `Mapa3D` (ej. `spawnArma1` … `spawnArma8`)
+    en posiciones distintas a los spawns de jugadores. Arrastrarlos al arreglo `puntosSpawnArmas` del GestorArmas.
+
+11. **Importar armas restantes** — `mac10.fbx`, `bereta.fbx`, `raygun.fbx` están en `Assets/Modelos/` pero no
+    tienen prefab ni componente `Arma`. Para cada una:
+    a. Importar el .fbx a la escena.
+    b. Agregarle BoxCollider (isTrigger = true), LineRenderer (desactivado) y el script `Arma`.
+    c. Configurar `posicionEnMano` y `rotacionEnMano` a ojo.
+    d. Arrastrar al array `todasLasArmas` del GestorArmas.
+
 ## Funcionalidad que falta (código)
 
-- Soltar el arma al morir / reaparecer sin arma.
+- ~~Soltar el arma al morir / reaparecer sin arma.~~ **✓ Implementado (2026-10-27)**
 - Si el host se desconecta, los clientes se quedan en la partida: volver al menú con `OnClientDisconnectCallback`.
 - Quitar el nombre de `GameManager.nombresJugadores` cuando un jugador se desconecta.
 - Botón "Jugar otra vez" en `PanelFin` (el host llama de nuevo a `GameManager.iniciarPartida`).

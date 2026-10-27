@@ -262,15 +262,58 @@ public class inicio : MonoBehaviour
     {
         iniciarServicios();
         ocultarPaneles();
-        
 
-        // asignacion de los eventos para cada boton 
-        if (btn_iniciar != null) btn_iniciar.onClick.AddListener(iniciar);
-        if (btn_salir != null) btn_salir.onClick.AddListener(salir);
-        if (btn_crearSala != null) btn_crearSala.onClick.AddListener(crearSala);
-        if (btn_UnirmeSale != null) btn_UnirmeSale.onClick.AddListener(unirmeSala); 
+        // Corregir textos de botones y etiquetas
+        CorregirTextos();
+
+        // Asignación de eventos para cada botón
+        if (btn_iniciar != null)    btn_iniciar.onClick.AddListener(iniciar);
+        if (btn_salir != null)      btn_salir.onClick.AddListener(salir);
+        if (btn_crearSala != null)  btn_crearSala.onClick.AddListener(crearSala);
+        if (btn_UnirmeSale != null) btn_UnirmeSale.onClick.AddListener(unirmeSala);
         if (btn_unirmeSala != null) btn_unirmeSala.onClick.AddListener(juntarPlayer);
-        // if (btn_playGame != null) btn_playGame.onClick.AddListener(iniciarPartida);
-        if (btn_playGame != null) btn_playGame.onClick.AddListener(iniciarPartidaBoton);
+        if (btn_playGame != null)   btn_playGame.onClick.AddListener(iniciarPartidaBoton);
+    }
+
+    // Corrige faltas de ortografía y textos placeholder que quedaron en la escena
+    private void CorregirTextos()
+    {
+        SetTextoBoton(btn_iniciar,    "Jugar");
+        SetTextoBoton(btn_salir,      "Salir");
+        SetTextoBoton(btn_crearSala,  "Crear sala");
+        SetTextoBoton(btn_UnirmeSale, "Unirse a una sala");
+        SetTextoBoton(btn_unirmeSala, "Confirmar código");
+        SetTextoBoton(btn_playGame,   "¡Iniciar partida!");
+
+        if (txt_inicio != null) txt_inicio.text = "Ingresa tu nombre";
+        if (txt_info   != null) txt_info.text   = "Ingresa el código de la sala";
+        if (txt_codigo != null) txt_codigo.text = "Generando código...";
+
+        // Texto "Jufadores:" en pantalla de carga — se busca por el label hermano de outputPlayers
+        if (txt_outputPlayers != null)
+        {
+            // el label estático está justo arriba; se busca en el padre
+            Transform padre = txt_outputPlayers.transform.parent;
+            if (padre != null)
+            {
+                foreach (TMPro.TextMeshProUGUI t in padre.GetComponentsInChildren<TMPro.TextMeshProUGUI>())
+                {
+                    string txt = t.text.Trim();
+                    // corregir solo las etiquetas que tienen el error conocido
+                    if (txt.StartsWith("Jufadores") || txt == "New Text")
+                        t.text = "Jugadores conectados:";
+                    if (txt == "Esperando juego")
+                        t.text = "Esperando que el host inicie...";
+                }
+            }
+        }
+    }
+
+    // Pone el texto en el hijo TMP de un botón
+    private static void SetTextoBoton(Button boton, string texto)
+    {
+        if (boton == null) return;
+        TMPro.TMP_Text tmp = boton.GetComponentInChildren<TMPro.TMP_Text>();
+        if (tmp != null) tmp.text = texto;
     }
 }

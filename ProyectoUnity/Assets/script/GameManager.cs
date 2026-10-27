@@ -28,8 +28,9 @@ public class GameManager : NetworkBehaviour
     // movimiento de cada persnaje
 
     
-    [SerializeField] private Transform[] puntosDeSpawn; // O List<Transform>
-    private int indiceSpawn = 0;
+    // Soporta hasta N puntos; en el Inspector se asignan 8 (o los que haya en el mapa actual)
+    // Al importar un mapa nuevo, solo hay que agregar sus spawns aquí
+    [SerializeField] private Transform[] puntosDeSpawn;
 
     public Vector3 AsignarSpawn()
     {
@@ -38,14 +39,9 @@ public class GameManager : NetworkBehaviour
             Debug.LogWarning("¡No hay puntos de spawn asignados en el GameManager!");
             return Vector3.zero;
         }
-
-        // Selecciona el punto actual
-        Vector3 posicion = puntosDeSpawn[indiceSpawn].position;
-
-        // Avanza al siguiente punto de spawn (si hay 2 spawns, alterna entre 0 y 1)
-        indiceSpawn = (indiceSpawn + 1) % puntosDeSpawn.Length;
-
-        return posicion;
+        // Aparición aleatoria, cada jugador cae en un spawn distinto cada vez
+        int indice = Random.Range(0, puntosDeSpawn.Length);
+        return puntosDeSpawn[indice].position;
     }
 
 
@@ -53,11 +49,6 @@ public class GameManager : NetworkBehaviour
     {
         if (NetworkManager.Singleton.IsServer)
         {
-            
-            //txt_tiempo.SetActive(true);
-            // txt_tiempo.gameObject.SetActive(true);
-
-
             tiempoRestante.Value = 60f;
             partidaActiva = true;
 
@@ -66,6 +57,11 @@ public class GameManager : NetworkBehaviour
             {
                 p.bajas.Value = 0;
             }
+
+            // Activar armas aleatorias en el mapa
+            GestorArmas ga = GestorArmas.Instancia;
+            if (ga != null) ga.IniciarRondaArmas();
+            else Debug.LogWarning("GameManager: no se encontró GestorArmas");
 
             iniciarClienteRpc();
         }
