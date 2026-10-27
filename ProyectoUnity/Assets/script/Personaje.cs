@@ -16,9 +16,13 @@ public class Personaje : NetworkBehaviour
 
 
     protected float direccionPersonaje=1f;
-    protected bool estaDeslizando=false; 
+    protected bool estaDeslizando=false;
     protected bool estaAgachado=false;
-    protected CharacterController controlador; 
+    protected CharacterController controlador;
+
+    public bool EstaDeslizando => estaDeslizando;
+    public bool EnSuelo => controlador != null && controlador.isGrounded;
+
     protected Vector3 velocidadCaida; //variable para ver si esta callendo o para mover en el eje y
     public Arma armaEquipada; //Para saber que arma esta usando
     protected Vector3 posicionInicial;
@@ -92,7 +96,7 @@ public class Personaje : NetworkBehaviour
         {
             if (movimiento != 0f) //Y no estaba quieto
             {
-                Deslizar(direccionPersonaje); //Desliza
+                Deslizar(movimiento); //Desliza
                 return;
             }
             else //Sisi estaba quieto
@@ -170,9 +174,14 @@ public class Personaje : NetworkBehaviour
     }
     void LateUpdate()//Fuerza al personaje a estar siempre en el plano z
     {
-        // Vector3 pos = transform.position;
-        // pos.z = 0f;
-        // transform.position = pos;
+        // Rotar el personaje según la dirección
+        // direccionPersonaje = -1 (izquierda), rotar 180° (Y)
+        // direccionPersonaje = 1 (derecha), rotar 0° (Y)
+        float rotacionY = 0f;
+        if (direccionPersonaje < 0f) rotacionY = 180f;
+        else if (direccionPersonaje > 0f) rotacionY = 0f;
+
+        transform.rotation = Quaternion.Euler(0f, rotacionY, 0f);
     }
 
     
