@@ -38,7 +38,7 @@ AnimatorStateTransition:
   m_Name: 
   m_Conditions:
   - m_ConditionMode: 4
-    m_ConditionEvent: Velocidad
+    m_ConditionEvent: movimiento
     m_EventTreshold: 0.1
   m_DstStateMachine: {fileID: 0}
   m_DstState: {fileID: 7901389768354718059}
@@ -65,19 +65,19 @@ AnimatorStateMachine:
   m_ChildStates:
   - serializedVersion: 1
     m_State: {fileID: 7901389768354718059}
-    m_Position: {x: 310, y: 240, z: 0}
+    m_Position: {x: 320, y: 240, z: 0}
   - serializedVersion: 1
     m_State: {fileID: -8989482962893887787}
     m_Position: {x: 580, y: 370, z: 0}
   - serializedVersion: 1
     m_State: {fileID: 4667912910018631219}
-    m_Position: {x: 288.62457, y: 396.15546, z: 0}
+    m_Position: {x: 290, y: 400, z: 0}
   - serializedVersion: 1
     m_State: {fileID: 5131269431191072776}
     m_Position: {x: 740, y: 240, z: 0}
   - serializedVersion: 1
     m_State: {fileID: -2518369980025726866}
-    m_Position: {x: 581.7329, y: 124.2468, z: 0}
+    m_Position: {x: 580, y: 120, z: 0}
   m_ChildStateMachines: []
   m_AnyStateTransitions: []
   m_EntryTransitions: []
@@ -97,7 +97,7 @@ AnimatorStateTransition:
   m_Name: 
   m_Conditions:
   - m_ConditionMode: 4
-    m_ConditionEvent: Velocidad
+    m_ConditionEvent: movimiento
     m_EventTreshold: 0.1
   m_DstStateMachine: {fileID: 0}
   m_DstState: {fileID: 7901389768354718059}
@@ -149,7 +149,7 @@ AnimatorController:
   m_Name: PersonajeAnimator
   serializedVersion: 6
   m_AnimatorParameters:
-  - m_Name: Velocidad
+  - m_Name: movimiento
     m_Type: 1
     m_DefaultFloat: 0
     m_DefaultInt: 0
@@ -161,13 +161,19 @@ AnimatorController:
     m_DefaultInt: 0
     m_DefaultBool: 0
     m_Controller: {fileID: 9100000}
-  - m_Name: EstaDeslizando
+  - m_Name: Saltar
     m_Type: 4
     m_DefaultFloat: 0
     m_DefaultInt: 0
     m_DefaultBool: 0
     m_Controller: {fileID: 9100000}
-  - m_Name: Saltar
+  - m_Name: estaDeslizando
+    m_Type: 4
+    m_DefaultFloat: 0
+    m_DefaultInt: 0
+    m_DefaultBool: 0
+    m_Controller: {fileID: 9100000}
+  - m_Name: estaAgachado
     m_Type: 4
     m_DefaultFloat: 0
     m_DefaultInt: 0
@@ -196,7 +202,7 @@ AnimatorStateTransition:
   m_Name: 
   m_Conditions:
   - m_ConditionMode: 3
-    m_ConditionEvent: Velocidad
+    m_ConditionEvent: movimiento
     m_EventTreshold: 0.1
   m_DstStateMachine: {fileID: 0}
   m_DstState: {fileID: -8989482962893887787}
@@ -221,7 +227,7 @@ AnimatorStateTransition:
   m_Name: 
   m_Conditions:
   - m_ConditionMode: 4
-    m_ConditionEvent: Velocidad
+    m_ConditionEvent: movimiento
     m_EventTreshold: 0.1
   - m_ConditionMode: 1
     m_ConditionEvent: Saltar
@@ -248,12 +254,12 @@ AnimatorStateTransition:
   m_PrefabAsset: {fileID: 0}
   m_Name: 
   m_Conditions:
-  - m_ConditionMode: 1
-    m_ConditionEvent: EstaDeslizando
-    m_EventTreshold: 0
   - m_ConditionMode: 3
-    m_ConditionEvent: Velocidad
+    m_ConditionEvent: movimiento
     m_EventTreshold: 0.1
+  - m_ConditionMode: 1
+    m_ConditionEvent: estaDeslizando
+    m_EventTreshold: 0
   m_DstStateMachine: {fileID: 0}
   m_DstState: {fileID: -2518369980025726866}
   m_Solo: 0
@@ -277,7 +283,7 @@ AnimatorStateTransition:
   m_Name: 
   m_Conditions:
   - m_ConditionMode: 3
-    m_ConditionEvent: Velocidad
+    m_ConditionEvent: movimiento
     m_EventTreshold: 0.1
   - m_ConditionMode: 1
     m_ConditionEvent: Saltar
@@ -305,7 +311,7 @@ AnimatorStateTransition:
   m_Name: 
   m_Conditions:
   - m_ConditionMode: 3
-    m_ConditionEvent: Velocidad
+    m_ConditionEvent: movimiento
     m_EventTreshold: 0.1
   m_DstStateMachine: {fileID: 0}
   m_DstState: {fileID: -8989482962893887787}
@@ -384,7 +390,7 @@ AnimatorStateTransition:
   m_Name: 
   m_Conditions:
   - m_ConditionMode: 3
-    m_ConditionEvent: Velocidad
+    m_ConditionEvent: movimiento
     m_EventTreshold: 0.1
   m_DstStateMachine: {fileID: 0}
   m_DstState: {fileID: -8989482962893887787}
