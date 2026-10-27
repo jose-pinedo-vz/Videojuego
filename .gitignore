@@ -1,4 +1,3 @@
-cat << 'EOF' > .gitignore
 # Unity temporal & cache
 [Ll]ibrary/
 [Tt]emp/
@@ -26,4 +25,14 @@ MemoryCaptures/
 .vs/
 .idea/
 .vscode/
-EOF
+
+# Unity extra
+.utmp/
+[Rr]ecordings/
+sysinfo.txt
+crashlytics-build.properties
+*.apk
+*.aab
+
+# Claude Code (config local de cada persona)
+.claude/settings.local.json
