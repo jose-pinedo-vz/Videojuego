@@ -87,6 +87,11 @@ public class Personaje : NetworkBehaviour
             armaEquipada.Disparar();
         }
 
+        if (armaEquipada != null && Keyboard.current.rKey.wasPressedThisFrame) //Recargar
+        {
+            armaEquipada.IniciarRecarga();
+        }
+
         // el salto termina cuando vuelve a tocar el suelo
         animEnSuelo.Value = controlador.isGrounded;
         if (controlador.isGrounded && velocidadCaida.y <= 0f)

@@ -16,8 +16,63 @@ public class Arma : MonoBehaviour
     private Personaje jugadorQueLaEquipo;
     private LineRenderer trazo;
 
-    [SerializeField] protected Vector3 rotacionEnMano = Vector3.zero; //Estos 2 son para controlar donde la va a agarrar 
+    [SerializeField] protected Vector3 rotacionEnMano = Vector3.zero; //Estos 2 son para controlar donde la va a agarrar
     [SerializeField] protected Vector3 posicionEnMano = Vector3.zero; //Ocupare ayuda en esto porque es a mano, ojo de buen cubero y presicion
+
+    [Header("Nombre para el HUD")]
+    [SerializeField] protected string nombreMostrado = ""; // si se deja vacio se usa el nombre del GameObject
+
+    [Header("Municion")]
+    [SerializeField] protected int municionMaxima = 10;
+    [SerializeField] protected float tiempoRecarga = 1.5f;
+    private int municionActual;
+    private bool recargando = false;
+
+    [Header("Area de recogida (trigger en el suelo)")]
+    [Tooltip("Desplazamiento del centro del collider de recogida. Vector3.zero = no tocar el centro que ya tiene el collider en el editor")]
+    [SerializeField] protected Vector3 offsetAreaRecogida = Vector3.zero;
+    [Tooltip("Tamanio del area de recogida (solo aplica si el collider es un BoxCollider). Vector3.zero = no tocar el tamanio que ya tiene en el editor")]
+    [SerializeField] protected Vector3 tamanoAreaRecogida = Vector3.zero;
+
+    public int MunicionActual => municionActual;
+    public int MunicionMaxima => municionMaxima;
+    public bool Recargando => recargando;
+    public string NombreMostrado => string.IsNullOrEmpty(nombreMostrado) ? gameObject.name : nombreMostrado;
+
+    protected virtual void Awake()
+    {
+        municionActual = municionMaxima;
+        AjustarAreaDeRecogida();
+    }
+
+    // Agranda/desplaza el collider de recogida para que no quede detras del modelo del arma
+    // y el jugador no tenga que pisar el centro exacto para activarlo
+    private void AjustarAreaDeRecogida()
+    {
+        Collider col = GetComponent<Collider>();
+        if (col == null) return;
+
+        col.isTrigger = true;
+
+        // Vector3.zero en cualquiera de los dos campos significa "no tocar lo que ya hay",
+        // asi no se pisa el collider que ya este bien ajustado en el editor para esta arma
+        bool hayOffset = offsetAreaRecogida != Vector3.zero;
+        bool hayTamano = tamanoAreaRecogida != Vector3.zero;
+
+        if (col is BoxCollider box)
+        {
+            if (hayOffset) box.center = offsetAreaRecogida;
+            if (hayTamano) box.size = tamanoAreaRecogida;
+        }
+        else if (col is SphereCollider sphere)
+        {
+            if (hayOffset) sphere.center = offsetAreaRecogida;
+        }
+        else if (col is CapsuleCollider capsule)
+        {
+            if (hayOffset) capsule.center = offsetAreaRecogida;
+        }
+    }
 
     //TERMINADO (El arma detecta al jugador cerca)
     protected virtual void OnTriggerEnter(Collider other)//Funcion para recoger el Arma si el jugador esta cercas (NO LE CAMBIEN EL NOMBRE PORFAS)
@@ -63,6 +118,8 @@ public class Arma : MonoBehaviour
 
         GetComponent<Collider>().enabled=false;//Desabilita OnTriggerExit y Enter para que no se la puedan robar (¿Seria interesante si se pudiera?)
         jugadorCerca = false; // con el collider apagado OnTriggerExit ya no se llama, si no se podia recoger otra vez
+        recargando = false;
+        municionActual = municionMaxima; // el arma se recoge con el cargador lleno
         Personaje jugador = mano.GetComponentInParent<Personaje>(); //Busca el script Personaje subiendo desde la mano
         if (jugador != null)
         {
@@ -92,6 +149,15 @@ public class Arma : MonoBehaviour
 
     public virtual void Disparar()
     {
+        if (recargando) return; // no se puede disparar mientras recarga
+
+        //¿Se quedo sin balas?
+        if (municionActual <= 0)
+        {
+            Debug.Log("Sin municion, presiona R para recargar");
+            return;
+        }
+
         //¿Esta disparando muy rapido?
         if (Time.time < tiempoUltimoDisparo + (1f / Cadencia))
         {
@@ -99,6 +165,7 @@ public class Arma : MonoBehaviour
         }
 
         tiempoUltimoDisparo = Time.time;
+        municionActual--;
 
         //Usamos la direccion del JUGADOR (limpia, solo rota en Y) en vez de la del arma (rotada por la pose de la mano)
         Vector3 direccionDisparo = jugadorQueLaEquipo != null ? jugadorQueLaEquipo.transform.right : transform.right;
@@ -152,6 +219,24 @@ public class Arma : MonoBehaviour
         GetComponent<Collider>().enabled = false;
         jugador.armaEquipada = this;
         jugadorQueLaEquipo = jugador;
+        recargando = false;
+        municionActual = municionMaxima; // el arma se recoge con el cargador lleno
+    }
+
+    // Se llama al presionar R. Si ya esta recargando o el cargador esta lleno, no hace nada
+    public void IniciarRecarga()
+    {
+        if (recargando || municionActual >= municionMaxima) return;
+        StartCoroutine(RecargarAhoraSi());
+    }
+
+    private IEnumerator RecargarAhoraSi()
+    {
+        recargando = true;
+        Debug.Log("Recargando...");
+        yield return new WaitForSeconds(tiempoRecarga);
+        municionActual = municionMaxima;
+        recargando = false;
     }
 
     // Suelta el arma: la desancla del jugador y la coloca en posicion (el suelo)
@@ -167,6 +252,9 @@ public class Arma : MonoBehaviour
         }
         mano = null;
         jugadorCerca = false;
+        StopAllCoroutines(); // cancela una recarga en curso, si la habia
+        recargando = false;
+        municionActual = municionMaxima; // queda lista para el siguiente que la recoja
 
         transform.parent = null;
         transform.position = posicion;
