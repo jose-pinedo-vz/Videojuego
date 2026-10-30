@@ -15,9 +15,6 @@ public class GestorArmas : NetworkBehaviour
     [Header("Armas disponibles — arrastrar todas las que haya en la escena")]
     [SerializeField] private Arma[] todasLasArmas;
 
-    [Header("Puntos de spawn de armas — deben ser distintos a los de jugadores")]
-    [SerializeField] private Transform[] puntosSpawnArmas;
-
     // spawn que le tocó a cada arma en esta partida
     private Dictionary<string, Vector3> spawnAsignado = new Dictionary<string, Vector3>();
 
@@ -28,20 +25,22 @@ public class GestorArmas : NetworkBehaviour
         Instancia = this;
     }
 
-    // Llamado por GameManager.iniciarPartida() en el servidor
-    public void IniciarRondaArmas()
+    // Llamado por GameManager.iniciarPartida() en el servidor, con los spawnArma del mapa elegido
+    public void IniciarRondaArmas(List<Transform> spawns)
     {
         if (!IsServer) return;
 
-        // Ocultar todas
+        if (spawns.Count == 0)
+            Debug.LogWarning("GestorArmas: el mapa no tiene spawns de armas (hijos llamados spawnArma1, spawnArma2...)");
+
+        // Ocultar todas, en todos los clientes
         foreach (Arma a in todasLasArmas)
-            if (a != null) a.gameObject.SetActive(false);
+            if (a != null) ActualizarArmaRpc(a.gameObject.name, a.transform.position, false);
 
         spawnAsignado.Clear();
 
         // Mezclar armas y spawns para aleatoriedad por partida
         List<Arma> disponibles = new List<Arma>(todasLasArmas);
-        List<Transform> spawns    = new List<Transform>(puntosSpawnArmas);
         Mezclar(disponibles);
         Mezclar(spawns);
 
@@ -90,6 +89,7 @@ public class GestorArmas : NetworkBehaviour
         }
         else
         {
+            arma.Soltar(posicion);          // si un jugador la traia del mapa anterior, se la quita de la mano
             arma.gameObject.SetActive(false);
         }
     }

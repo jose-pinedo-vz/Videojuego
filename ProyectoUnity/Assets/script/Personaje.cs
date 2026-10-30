@@ -171,7 +171,9 @@ public class Personaje : NetworkBehaviour
         }
 
         velocidadCaida.y -= gravedad * Time.deltaTime; 
-        controlador.Move(velocidadCaida * Time.deltaTime);
+        Vector3 pasoGravedad = velocidadCaida * Time.deltaTime;
+        pasoGravedad.z = posicionInicial.z - transform.position.z; //Regresa al plano del spawn, el relieve del mapa empuja al personaje en Z. Va en este Move para no perder isGrounded
+        controlador.Move(pasoGravedad);
         //En caso de que lo anterior no suceda entonces simplemente se va reduciendo la posicion del personaje en y hasta que toque el suelo
     }
     //SOLO FALTA QUE APUNTE HACIA ARRIBA... NO SE COMO VA A "APUNTAR" SIQUIERA
@@ -340,5 +342,6 @@ public class Personaje : NetworkBehaviour
     public void FijarSpawn(Vector3 pos)
     {
         posicionInicial = pos;
+        velocidadCaida = Vector3.zero; //Si iba cayendo en el mapa anterior, que no llegue con esa velocidad al nuevo
     }
 }

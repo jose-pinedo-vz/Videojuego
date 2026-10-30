@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 using Unity.Netcode;
 using Unity.Collections;
 using TMPro;
@@ -28,20 +29,88 @@ public class GameManager : NetworkBehaviour
     // movimiento de cada persnaje
 
     
-    // Soporta hasta N puntos; en el Inspector se asignan 8 (o los que haya en el mapa actual)
-    // Al importar un mapa nuevo, solo hay que agregar sus spawns aquí
-    [SerializeField] private Transform[] puntosDeSpawn;
+    // Cada mapa guarda sus spawns como hijos y se encuentran por nombre: "spawn1", "spawn2"...
+    // para jugadores y "spawnArma1", "spawnArma2"... para armas
+    public const string PREFIJO_JUGADOR = "spawn";
+    public const string PREFIJO_ARMA = "spawnArma";
+
+    private int indiceMapa = 0; // mapa de la partida, posicion en inicio.Mapas
+    private List<Vector3> spawnsDisponibles = new List<Vector3>(); // los que nadie ha ocupado
+    private List<int> ordenMapas = new List<int>(); // mapas que faltan por jugarse, ya mezclados
+    private int ultimoMapa = -1;
+
+    // Orden aleatorio: no se repite un mapa hasta haber jugado todos
+    private int SiguienteMapa(int cantidadMapas)
+    {
+        if (ordenMapas.Count == 0)
+        {
+            for (int i = 0; i < cantidadMapas; i++) ordenMapas.Add(i);
+
+            // Mezcla Fisher-Yates
+            for (int i = ordenMapas.Count - 1; i > 0; i--)
+            {
+                int j = Random.Range(0, i + 1);
+                (ordenMapas[i], ordenMapas[j]) = (ordenMapas[j], ordenMapas[i]);
+            }
+
+            // al volver a empezar la lista, que no toque dos veces seguidas el mismo
+            if (cantidadMapas > 1 && ordenMapas[0] == ultimoMapa)
+            {
+                (ordenMapas[0], ordenMapas[cantidadMapas - 1]) = (ordenMapas[cantidadMapas - 1], ordenMapas[0]);
+            }
+        }
+
+        ultimoMapa = ordenMapas[0];
+        ordenMapas.RemoveAt(0);
+        return ultimoMapa;
+    }
+
+    public static List<Transform> BuscarPuntos(GameObject mapa, string prefijo)
+    {
+        List<Transform> puntos = new List<Transform>();
+        if (mapa == null) return puntos;
+
+        foreach (Transform t in mapa.GetComponentsInChildren<Transform>(true)) // true: el mapa esta apagado hasta iniciar
+        {
+            if (!t.name.StartsWith(prefijo, System.StringComparison.OrdinalIgnoreCase)) continue;
+            // "spawnArma1" tambien empieza con "spawn", no es de jugador
+            if (prefijo == PREFIJO_JUGADOR && t.name.StartsWith(PREFIJO_ARMA, System.StringComparison.OrdinalIgnoreCase)) continue;
+            puntos.Add(t);
+        }
+        return puntos;
+    }
+
+    private GameObject MapaActual()
+    {
+        if (texto == null) texto = FindFirstObjectByType<inicio>();
+        if (texto == null) return null;
+
+        List<GameObject> mapas = texto.Mapas;
+        return indiceMapa < mapas.Count ? mapas[indiceMapa] : null;
+    }
 
     public Vector3 AsignarSpawn()
     {
-        if (puntosDeSpawn == null || puntosDeSpawn.Length == 0)
+        // Si ya se ocuparon todos (mas jugadores que spawns) se vuelven a repartir
+        if (spawnsDisponibles.Count == 0)
         {
-            Debug.LogWarning("¡No hay puntos de spawn asignados en el GameManager!");
+            foreach (Transform punto in BuscarPuntos(MapaActual(), PREFIJO_JUGADOR))
+            {
+                spawnsDisponibles.Add(punto.position);
+            }
+        }
+
+        if (spawnsDisponibles.Count == 0)
+        {
+            Debug.LogWarning("¡El mapa no tiene spawns de jugador (hijos llamados spawn1, spawn2...)!");
             return Vector3.zero;
         }
-        // Aparición aleatoria, cada jugador cae en un spawn distinto cada vez
-        int indice = Random.Range(0, puntosDeSpawn.Length);
-        return puntosDeSpawn[indice].position;
+
+        // Aparición aleatoria, cada jugador cae en un spawn distinto
+        int indice = Random.Range(0, spawnsDisponibles.Count);
+        Vector3 posicion = spawnsDisponibles[indice];
+        spawnsDisponibles.RemoveAt(indice);
+        return posicion;
     }
 
 
@@ -49,30 +118,51 @@ public class GameManager : NetworkBehaviour
     {
         if (NetworkManager.Singleton.IsServer)
         {
-            tiempoRestante.Value = 60f;
             partidaActiva = true;
+            ordenMapas.Clear(); // la partida recorre todos los mapas desde cero
 
-            // marcador en cero al empezar
+            // marcador en cero al empezar, las bajas se acumulan entre mapas
             foreach (Personaje p in FindObjectsByType<Personaje>(FindObjectsSortMode.None))
             {
                 p.bajas.Value = 0;
             }
 
-            // Activar armas aleatorias en el mapa
-            GestorArmas ga = GestorArmas.Instancia;
-            if (ga != null) ga.IniciarRondaArmas();
-            else Debug.LogWarning("GameManager: no se encontró GestorArmas");
-
-            iniciarClienteRpc();
+            iniciarRonda();
         }
     }
 
+    // Una ronda es un mapa con su tiempo, se llama al empezar la partida y al acabarse el tiempo de cada mapa
+    private void iniciarRonda()
+    {
+        tiempoRestante.Value = 60f;
+
+        // El servidor elige el mapa y se lo avisa a todos en iniciarClienteRpc
+        int cantidadMapas = texto != null ? texto.Mapas.Count : 0;
+        indiceMapa = SiguienteMapa(Mathf.Max(cantidadMapas, 1));
+        spawnsDisponibles.Clear();
+        Debug.Log("Mapa elegido: " + (MapaActual() != null ? MapaActual().name : "ninguno") + ", faltan " + ordenMapas.Count + " de " + cantidadMapas + " mapas");
+
+        // cada jugador a un spawn del mapa elegido
+        foreach (Personaje p in FindObjectsByType<Personaje>(FindObjectsSortMode.None))
+        {
+            Red r = p.GetComponent<Red>();
+            if (r != null) r.TeleportDuenioRpc(AsignarSpawn());
+        }
+
+        // Activar armas aleatorias en el mapa
+        GestorArmas ga = GestorArmas.Instancia;
+        if (ga != null) ga.IniciarRondaArmas(BuscarPuntos(MapaActual(), PREFIJO_ARMA));
+        else Debug.LogWarning("GameManager: no se encontró GestorArmas");
+
+        iniciarClienteRpc(indiceMapa);
+    }
+
     [Rpc(SendTo.ClientsAndHost)]
-    public void iniciarClienteRpc()
+    public void iniciarClienteRpc(int indiceMapaElegido)
     {
         if (texto != null)
         {
-            texto.iniciarPartida();
+            texto.iniciarPartida(indiceMapaElegido);
         }
         if (txt_tiempo != null) txt_tiempo.gameObject.SetActive(true);
     }
@@ -152,10 +242,19 @@ public class GameManager : NetworkBehaviour
             if (tiempoRestante.Value <= 0f)
             {
                 tiempoRestante.Value = 0f;
-                partidaActiva = false;
-                Debug.Log("Se acabó el tiempo"); 
-                //if (texto != null) texto.mostrarPanelFin();
-                finPartidaClienteRpc();  
+                Debug.Log("Se acabó el tiempo");
+
+                // La partida solo termina cuando ya se jugaron todos los mapas
+                if (ordenMapas.Count > 0)
+                {
+                    iniciarRonda();
+                }
+                else
+                {
+                    partidaActiva = false;
+                    //if (texto != null) texto.mostrarPanelFin();
+                    finPartidaClienteRpc();
+                }
             }
         }
 

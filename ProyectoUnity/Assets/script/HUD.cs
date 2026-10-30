@@ -12,6 +12,14 @@ public class HUD : MonoBehaviour
 
     private Personaje jugadorLocal;
 
+    // Prende o apaga los textos del HUD, lo llama inicio al empezar y terminar la partida
+    public void Mostrar(bool visible)
+    {
+        if (txt_municion != null) txt_municion.gameObject.SetActive(visible);
+        if (txt_arma != null) txt_arma.gameObject.SetActive(visible);
+        if (txt_marcador != null) txt_marcador.gameObject.SetActive(visible);
+    }
+
     private void Update()
     {
         if (jugadorLocal == null || !jugadorLocal.IsSpawned)
@@ -51,19 +59,32 @@ public class HUD : MonoBehaviour
 
     // Lista de jugadores ordenada por bajas, se actualiza en vivo durante la partida
     private void ActualizarMarcador()
+{
+    if (txt_marcador == null) return;
+
+    Personaje[] jugadores = FindObjectsByType<Personaje>(FindObjectsSortMode.None);
+    if (jugadores == null || jugadores.Length == 0)
     {
-        if (txt_marcador == null) return;
-
-        Personaje[] jugadores = FindObjectsByType<Personaje>(FindObjectsSortMode.None);
-        System.Array.Sort(jugadores, (a, b) => b.bajas.Value.CompareTo(a.bajas.Value));
-
-        string texto = "";
-        foreach (Personaje p in jugadores)
-        {
-            Red r = p.GetComponent<Red>();
-            string nombreJugador = r != null ? r.nombreJugador.Value.ToString() : p.name;
-            texto += nombreJugador + "  -  " + p.bajas.Value + " bajas\n";
-        }
-        txt_marcador.text = texto;
+        txt_marcador.text = "Buscando jugadores...";
+        return;
     }
+
+    // Ordenar de mayor a menor bajas de forma segura
+    System.Array.Sort(jugadores, (a, b) => {
+        int bajasA = (a != null && a.bajas != null) ? a.bajas.Value : 0;
+        int bajasB = (b.bajas != null) ? b.bajas.Value : 0;
+        return bajasB.CompareTo(bajasA);
+    });
+
+    string texto = "";
+    foreach (Personaje p in jugadores)
+    {
+        if (p == null) continue;
+        Red r = p.GetComponent<Red>();
+        string nombreJugador = (r != null && r.nombreJugador != null) ? r.nombreJugador.Value.ToString() : p.name;
+        int bajasVal = (p.bajas != null) ? p.bajas.Value : 0;
+        texto += nombreJugador + "  -  " + bajasVal + " bajas\n";
+    }
+    txt_marcador.text = texto;
+}
 }

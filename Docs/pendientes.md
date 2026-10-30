@@ -20,16 +20,21 @@
 
 ## Hacer en el editor — spawns y armas (cambios del 2026-10-27)
 
-8. **6 spawns de jugador adicionales** — dentro de `Mapa3D` crear 6 GameObjects vacíos (`spawn3` a `spawn8`)
-   en posiciones separadas del mapa. Arrastrarlos al arreglo `puntosDeSpawn` del componente `GameManager`
-   (junto a los ya existentes `spawn1` y `spawn2`, total **8**). El código ya elige uno al azar.
+8. **Spawns de jugador** — seleccionar el mapa en la Hierarchy y usar *Herramientas → Crear spawns de jugador en el
+   mapa seleccionado* (crea hasta `spawn8`). Mover cada uno a su lugar sin cambiar la Z, que es el plano donde se camina.
+   El código los encuentra por nombre, no se arrastran a ningún arreglo.
 
 9. **GestorArmas en la escena** — agregar el script `GestorArmas` al objeto `GameManager ` (el que ya existe).
    - En `todasLasArmas`: arrastrar TODOS los objetos de arma que estén en la escena (`barret`, `ak47`, y los que se agreguen).
    - En `maxArmasActivas`: dejar en 4 (o cambiar según se quiera).
 
-10. **Puntos de spawn de armas** — crear 6–8 GameObjects vacíos en `Mapa3D` (ej. `spawnArma1` … `spawnArma8`)
-    en posiciones distintas a los spawns de jugadores. Arrastrarlos al arreglo `puntosSpawnArmas` del GestorArmas.
+10. **Spawns de armas** — igual que el punto 8 con *Herramientas → Crear spawns de armas en el mapa seleccionado*
+    (crea `spawnArma1` … `spawnArma6`). Sin ellos, el mapa se juega sin armas cuando `GestorArmas` está en la escena.
+
+12. **Agregar un mapa nuevo** — ponerlo en la raíz de la Hierarchy con un nombre que empiece con `ecena`
+    (ej. `ecenaCocina`) y repetir los puntos 8 y 10 en él; el código lo detecta solo. Si el modelo es un .fbx, activar
+    *Generate Colliders* en su importación o los jugadores caen al vacío. Una partida recorre todos los mapas en orden
+    aleatorio, 60 segundos cada uno, y termina al acabarse el tiempo del último. Las bajas se acumulan entre mapas.
 
 11. **Importar armas restantes** — `mac10.fbx`, `bereta.fbx`, `raygun.fbx` están en `Assets/Modelos/` pero no
     tienen prefab ni componente `Arma`. Para cada una:

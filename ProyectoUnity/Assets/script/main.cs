@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine.UI;
 using Unity.Services.Core;
@@ -42,13 +43,48 @@ public class inicio : MonoBehaviour
     public NetWork net;
     public Red red;
 
+    // los mapas son los objetos raiz de la escena cuyo nombre empieza con "ecena"
+    private const string PREFIJO_MAPA = "ecena";
+
+    // todos los mapas disponibles, ordenados por nombre para que sean iguales en todas las PCs
+    public List<GameObject> Mapas
+    {
+        get
+        {
+            List<GameObject> mapas = new List<GameObject>();
+            if (Mapa3D != null) mapas.Add(Mapa3D);
+
+            foreach (GameObject raiz in gameObject.scene.GetRootGameObjects()) // incluye los apagados
+            {
+                if (raiz.name.StartsWith(PREFIJO_MAPA, System.StringComparison.OrdinalIgnoreCase) && !mapas.Contains(raiz))
+                {
+                    mapas.Add(raiz);
+                }
+            }
+
+            mapas.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
+            return mapas;
+        }
+    }
+
+    // prende solo el mapa indicado, con -1 se apagan todos
+    private void mostrarMapa(int indice)
+    {
+        List<GameObject> mapas = Mapas;
+        for (int i = 0; i < mapas.Count; i++)
+        {
+            mapas[i].SetActive(i == indice);
+        }
+    }
+
     public void mostrarPanelFin()
     {
 
         // terminar partid
-        if (Mapa3D != null) Mapa3D.SetActive(false);
+        mostrarMapa(-1);
         if (Cochera != null) Cochera.SetActive(false);
         if (txt_tiempo != null) txt_tiempo.gameObject.SetActive(false);
+        mostrarHUD(false);
 
         foreach (Red jugador in FindObjectsByType<Red>((FindObjectsSortMode.None)))
         {
@@ -102,7 +138,7 @@ public class inicio : MonoBehaviour
 
 
     // esta funcion se encargara de desactivar los elementos del canvas y iniciar el mapa 
-    public void iniciarPartida()
+    public void iniciarPartida(int indiceMapa)
     {
         // PanelInicio.SetActive(false);
         // PanelCliente.SetActive(false);
@@ -118,14 +154,22 @@ public class inicio : MonoBehaviour
         //if (PanelFIn != null) PanelFin.SetActive(false);
         if (PanelFin != null) PanelFin.SetActive(false);
 
-        if (Mapa3D != null) Mapa3D.SetActive(true);
+        mostrarMapa(indiceMapa);
         if (Cochera != null) Cochera.SetActive(true);
         if (txt_tiempo != null) txt_tiempo.gameObject.SetActive(true);
+        mostrarHUD(true);
 
         foreach (Red jugador in FindObjectsByType<Red>(FindObjectsSortMode.None))
         {
             jugador.MostrarJugador(true);
         }
+    }
+
+    // el HUD esta en el mismo Canvas que este script
+    private void mostrarHUD(bool visible)
+    {
+        HUD hud = GetComponent<HUD>();
+        if (hud != null) hud.Mostrar(visible);
     }
 
 
@@ -138,12 +182,13 @@ public class inicio : MonoBehaviour
     // se encarge de mostrar los paneles nesesarios y oclutarlos cuando es nesesario
     public void ocultarPaneles()
     {
-        Mapa3D.SetActive(false);
+        mostrarMapa(-1);
         Cochera.SetActive(false);
         if (txt_tiempo != null)
         {
             txt_tiempo.gameObject.SetActive(false);
         }
+        mostrarHUD(false);
 
         // Ocultamos todos los paneles secundarios primero
         PanelSeleccion.SetActive(false);

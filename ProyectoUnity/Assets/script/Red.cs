@@ -80,7 +80,7 @@ public class Red : NetworkBehaviour
 
     // Se ejecuta SOLO en el dueño (que es quien tiene autoridad del NetworkTransform)
     [Rpc(SendTo.Owner)]
-    private void TeleportDuenioRpc(Vector3 posicion)
+    public void TeleportDuenioRpc(Vector3 posicion)
     {
         if (cc != null) cc.enabled = false;
 
