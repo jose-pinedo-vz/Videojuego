@@ -42,6 +42,25 @@ public class GestorArmas : NetworkBehaviour
         new ConfigModeloArma { nombre = "raygun", rutaFbx = "Assets/Modelos/raygun/raygun.fbx", escala = new Vector3(0.15f, 0.15f, 0.15f),    rotacionEuler = new Vector3(0f, 180f, 0f),  cadencia = 6f,   alcance = 8f,   municionMax = 15, tiempoRecarga = 2.0f },
     };
 
+    private static readonly Vector3[] SPAWNS_COCHERA_POSTER = new Vector3[]
+    {
+        new Vector3(0.071f,   0.30077758f, -0.013f),
+        new Vector3(-0.295f,  0.322f,      -0.0924f),
+        new Vector3(-0.3712f, -0.158f,     -0.0846f),
+        new Vector3(0.364f,   -0.152f,     -0.0528f),
+        new Vector3(-0.2785f, -0.34f,      -0.048f),
+        new Vector3(0.38f,    0.1063f,     -0.057f),
+    };
+
+    private static readonly Vector3[] SPAWNS_COSINA_LOCAL = new Vector3[]
+    {
+        new Vector3(-0.39f,      5.97f,  2.92f),
+        new Vector3(0.45000076f, 3.04f,  3.26f),
+        new Vector3(10.35f,      8.51f,  2.9f),
+        new Vector3(3.5f,        1.291f, 2.969f),
+        new Vector3(10.57f,      4.38f,  3.058f),
+    };
+
     private void Awake()
     {
         Instancia = this;
@@ -126,17 +145,15 @@ public class GestorArmas : NetworkBehaviour
             }
 #endif
 
-            if (objArma != null && objArma.GetComponent<Arma>() == null)
+            if (objArma != null)
             {
                 objArma.name = cfg.nombre;
                 objArma.transform.localScale = cfg.escala;
                 objArma.transform.rotation = Quaternion.Euler(cfg.rotacionEuler);
 
-                if (objArma.GetComponent<Collider>() == null)
-                {
-                    BoxCollider box = objArma.AddComponent<BoxCollider>();
-                    box.isTrigger = true;
-                }
+                BoxCollider box = objArma.GetComponent<BoxCollider>();
+                if (box == null) box = objArma.AddComponent<BoxCollider>();
+                box.isTrigger = true;
 
                 LineRenderer lr = objArma.GetComponent<LineRenderer>();
                 if (lr == null) lr = objArma.AddComponent<LineRenderer>();
@@ -149,8 +166,12 @@ public class GestorArmas : NetworkBehaviour
                 if (matTrazo != null) lr.sharedMaterial = matTrazo;
 #endif
 
-                Arma nuevoScriptArma = objArma.AddComponent<Arma>();
-                nuevoScriptArma.ConfigurarDatosArma(cfg.cadencia, cfg.alcance, cfg.municionMax, cfg.tiempoRecarga);
+                Arma scriptArma = objArma.GetComponent<Arma>();
+                if (scriptArma == null)
+                {
+                    scriptArma = objArma.AddComponent<Arma>();
+                    scriptArma.ConfigurarDatosArma(cfg.cadencia, cfg.alcance, cfg.municionMax, cfg.tiempoRecarga);
+                }
             }
         }
     }
@@ -179,7 +200,64 @@ public class GestorArmas : NetworkBehaviour
         List<Transform> puntos = GameManager.BuscarPuntos(mapa, GameManager.PREFIJO_ARMA);
         if (puntos.Count > 0) return puntos;
 
+        // Si es ecenaCochera o ecenaCosina, recrear tus puntos spawnArma en sus coordenadas exactas
+        if (mapa.name.Equals("ecenaCochera", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Transform posterFondo = null;
+            foreach (Transform t in mapa.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name == "Poster_fondo")
+                {
+                    posterFondo = t;
+                    break;
+                }
+            }
+
+            Transform padre = posterFondo != null ? posterFondo : mapa.transform;
+            for (int i = 0; i < SPAWNS_COCHERA_POSTER.Length; i++)
+            {
+                GameObject punto = new GameObject(GameManager.PREFIJO_ARMA + (i + 1));
+                punto.transform.SetParent(padre, false);
+                if (posterFondo != null)
+                {
+                    punto.transform.localPosition = SPAWNS_COCHERA_POSTER[i];
+                }
+                else
+                {
+                    Vector3 p = SPAWNS_COCHERA_POSTER[i];
+                    punto.transform.localPosition = new Vector3(-p.x * 19.527935f, 4.829999f + p.y * 9.974148f, -3.87f - p.z * 11.585816f);
+                }
+                puntos.Add(punto.transform);
+            }
+            return puntos;
+        }
+
+        if (mapa.name.Equals("ecenaCosina", System.StringComparison.OrdinalIgnoreCase))
+        {
+            for (int i = 0; i < SPAWNS_COSINA_LOCAL.Length; i++)
+            {
+                GameObject punto = new GameObject(GameManager.PREFIJO_ARMA + (i + 1));
+                punto.transform.SetParent(mapa.transform, false);
+                punto.transform.localPosition = SPAWNS_COSINA_LOCAL[i];
+                puntos.Add(punto.transform);
+            }
+            return puntos;
+        }
+
         List<Transform> spawnsJugador = GameManager.BuscarPuntos(mapa, GameManager.PREFIJO_JUGADOR);
+        if (spawnsJugador.Count > 0)
+        {
+            int cantidad = Mathf.Max(maxArmasActivas, 5);
+            for (int i = 0; i < cantidad; i++)
+            {
+                Transform refSpawn = spawnsJugador[i % spawnsJugador.Count];
+                GameObject punto = new GameObject(GameManager.PREFIJO_ARMA + (i + 1));
+                punto.transform.SetParent(mapa.transform);
+                punto.transform.position = refSpawn.position + new Vector3(0.6f, 0f, 0f);
+                puntos.Add(punto.transform);
+            }
+            return puntos;
+        }
         Personaje jugadorRef = FindFirstObjectByType<Personaje>(FindObjectsInactive.Include);
 
         float zPlano = jugadorRef != null ? jugadorRef.transform.position.z
