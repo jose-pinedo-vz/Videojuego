@@ -35,7 +35,7 @@ public class HUD : MonoBehaviour
     {
         foreach (Personaje p in FindObjectsByType<Personaje>(FindObjectsSortMode.None))
         {
-            if (p.IsOwner) return p;
+            if (!p.IsSpawned || p.IsOwner) return p;
         }
         return null;
     }
@@ -51,9 +51,11 @@ public class HUD : MonoBehaviour
         {
             txt_municion.text = arma == null
                 ? "- / -"
-                : arma.Recargando
-                    ? "Recargando..."
-                    : arma.MunicionActual + " / " + arma.MunicionMaxima;
+                : arma.EnCaja
+                    ? "Presiona V para romper"
+                    : arma.Recargando
+                        ? "Recargando..."
+                        : arma.MunicionActual + " / " + arma.MunicionMaxima;
         }
     }
 

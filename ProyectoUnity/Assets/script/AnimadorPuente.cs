@@ -50,7 +50,7 @@ public class AnimadorPuente : NetworkBehaviour
         animator.SetBool("EstaEnSuelo",    enSuelo);
         animator.SetBool("estaDeslizando", deslizando);
         animator.SetBool("estaCorriendo",  estaCorriendo);
-        animator.SetBool("estaAgachado",   agachado);
+        // animator.SetBool("estaAgachado",   agachado); // Parámetro no existe en el Animator
 
         // Solo saltar si está en suelo, no está deslizando, y presiona espacio
         if (enSuelo && !deslizando && Keyboard.current.spaceKey.wasPressedThisFrame)

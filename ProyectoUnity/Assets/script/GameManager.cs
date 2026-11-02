@@ -151,10 +151,19 @@ public class GameManager : NetworkBehaviour
 
         // Activar armas aleatorias en el mapa
         GestorArmas ga = GestorArmas.Instancia;
-        if (ga != null) ga.IniciarRondaArmas(BuscarPuntos(MapaActual(), PREFIJO_ARMA));
+        if (ga == null) ga = gameObject.AddComponent<GestorArmas>();
+        if (ga != null) ga.IniciarRondaArmas(ga.ObtenerOCrearSpawnsEnMapa(MapaActual()));
         else Debug.LogWarning("GameManager: no se encontró GestorArmas");
 
         iniciarClienteRpc(indiceMapa);
+    }
+
+    [Rpc(SendTo.ClientsAndHost)]
+    public void SincronizarArmaSpawneadaClienteRpc(string nombreArma, Vector3 posicion, bool activar, bool enCaja)
+    {
+        GestorArmas ga = GestorArmas.Instancia;
+        if (ga == null) ga = gameObject.AddComponent<GestorArmas>();
+        if (ga != null) ga.AplicarEstadoArmaRemoto(nombreArma, posicion, activar, enCaja);
     }
 
     [Rpc(SendTo.ClientsAndHost)]
@@ -173,6 +182,10 @@ public class GameManager : NetworkBehaviour
     private void Awake()
     {
         nombresJugadores = new NetworkList<FixedString32Bytes>();
+        if (GetComponent<GestorArmas>() == null && FindFirstObjectByType<GestorArmas>(FindObjectsInactive.Include) == null)
+        {
+            gameObject.AddComponent<GestorArmas>();
+        }
     }
 
 

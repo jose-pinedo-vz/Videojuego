@@ -24,6 +24,10 @@ public class Personaje : NetworkBehaviour
     public bool EstaDeslizando => estaDeslizando;
     public bool EnSuelo        => controlador != null && controlador.isGrounded;
     public bool EstaAgachado   => estaAgachado;
+    // +1 cuando mira a la izquierda (+X), -1 cuando mira a la derecha (-X)
+    public float DireccionHorizontal => (!IsSpawned || IsOwner)
+        ? (direccionPersonaje >= 0f ? 1f : -1f)
+        : (transform.forward.x >= 0f ? 1f : -1f);
 
     protected Vector3 velocidadCaida; //variable para ver si esta callendo o para mover en el eje y
     public Arma armaEquipada; //Para saber que arma esta usando
@@ -51,6 +55,7 @@ public class Personaje : NetworkBehaviour
     {
         controlador=GetComponent<CharacterController>(); //Es para los controladores de personaje, como controlar cuando esta chocando con tro objeto
         posicionInicial = transform.position; //Hace que se tome la posicion en la que empezo el jugador
+        transform.rotation = Quaternion.Euler(0f, direccionPersonaje > 0f ? 90f : -90f, 0f);
 
         animator = GetComponentInChildren<Animator>(); // sirve si el Animator esta en el cuerpo o en el modelo hijo
         if (animator != null && animator.runtimeAnimatorController != null)
@@ -64,7 +69,7 @@ public class Personaje : NetworkBehaviour
     protected virtual void Update() //Se actualiza siempre lo que esta dentro de esta funcion
     {
 
-        if (!IsOwner) return; // un objeto por equipo
+        if (IsSpawned && !IsOwner) return; // un objeto por equipo en red
         if (!GetComponentInChildren<Renderer>().enabled) return; // espera a que empeise la partida
 
 
@@ -84,12 +89,21 @@ public class Personaje : NetworkBehaviour
 
         if (armaEquipada != null && Keyboard.current.vKey.wasPressedThisFrame) //Solo dispara si tiene arma equipada
         {
+            Debug.Log("Tecla V presionada, armaEquipada: " + armaEquipada.name);
             armaEquipada.Disparar();
         }
 
-        if (armaEquipada != null && Keyboard.current.rKey.wasPressedThisFrame) //Recargar
+        if (armaEquipada != null && !armaEquipada.EnCaja && Keyboard.current.rKey.wasPressedThisFrame) //Recargar
         {
             armaEquipada.IniciarRecarga();
+        }
+
+        // Si tiene arma equipada y presiona C, la suelta
+        if (armaEquipada != null && Keyboard.current.cKey.wasPressedThisFrame && armaEquipada.TiempoRecogida <= 0f)
+        {
+            Debug.Log("Tecla C presionada para soltar arma");
+            armaEquipada.SoltarVoluntariamente();
+            armaEquipada = null;
         }
 
         // el salto termina cuando vuelve a tocar el suelo
@@ -128,8 +142,8 @@ public class Personaje : NetworkBehaviour
         {
             direccionPersonaje=-1f;
         }
-        // gira al personaje en Y para que transform.right (hacia donde dispara el arma) apunte a donde camina
-        transform.rotation = Quaternion.Euler(0f, direccionPersonaje > 0 ? 0f : 180f, 0f);
+        // gira al personaje en Y para que mire hacia la dirección del movimiento
+        transform.rotation = Quaternion.Euler(0f, direccionPersonaje > 0 ? 90f : -90f, 0f);
         animMovimiento.Value = Mathf.Abs(movimiento);
         // estaCorriendo: se mueve horizontalmente sin deslizarse
         animCorriendo.Value = (movimiento != 0f) && !estaDeslizando;
@@ -227,9 +241,12 @@ public class Personaje : NetworkBehaviour
     }
     void LateUpdate()
     {
-        // Rotación garantizada cada frame (Blaidmir: asegura orientación correcta fuera de Mover)
-        if (direccionPersonaje < 0f)       transform.rotation = Quaternion.Euler(0f, 180f, 0f);
-        else if (direccionPersonaje > 0f)  transform.rotation = Quaternion.Euler(0f, 0f,   0f);
+        // Rotación garantizada cada frame en el dueño (o en escenas de prueba sin red)
+        if (!IsSpawned || IsOwner)
+        {
+            if (direccionPersonaje < 0f)       transform.rotation = Quaternion.Euler(0f, -90f, 0f);
+            else if (direccionPersonaje > 0f)  transform.rotation = Quaternion.Euler(0f, 90f, 0f);
+        }
 
         // AnimadorPuente maneja el Animator del dueño directamente.
         // Aquí solo actualizamos para los clientes que observan a este jugador.
@@ -325,8 +342,10 @@ public class Personaje : NetworkBehaviour
         controlador.enabled=false;//Se desactiva al personaje controller para que no haya broncas
 
         transform.position=posicionInicial; //Se envia al personaje a su posicion de spawn
+        Quaternion rotacionSpawn = Quaternion.Euler(0f, direccionPersonaje > 0f ? 90f : -90f, 0f);
+        transform.rotation = rotacionSpawn;
         var nt = GetComponent<Unity.Netcode.Components.NetworkTransform>();
-        if (nt != null) nt.Teleport(posicionInicial, transform.rotation, transform.localScale);
+        if (nt != null) nt.Teleport(posicionInicial, rotacionSpawn, transform.localScale);
 
         velocidadCaida=Vector3.zero; //Para que no haya problemas raros con la velocidad de caida
         controlador.enabled=true;
