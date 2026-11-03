@@ -305,6 +305,14 @@ public class inicio : MonoBehaviour
 
     private void Start()
     {
+        // Pantalla completa a la resolución nativa del monitor.
+        // Unity guarda el último tamaño de ventana y lo reusa (ej. 936x995), esto lo ignora.
+        if (!Application.isEditor)
+        {
+            Resolution nativa = Screen.currentResolution;
+            Screen.SetResolution(nativa.width, nativa.height, FullScreenMode.FullScreenWindow);
+        }
+
         iniciarServicios();
         ocultarPaneles();
 

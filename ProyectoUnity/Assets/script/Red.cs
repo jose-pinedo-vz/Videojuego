@@ -96,7 +96,7 @@ public class Red : NetworkBehaviour
     public void AvisarArmaRpc(string nombreArma)
     {
         // se busca por nombre porque las armas no son NetworkObject; cada arma en la escena debe tener nombre unico
-        foreach (Arma arma in FindObjectsByType<Arma>(FindObjectsSortMode.None))
+        foreach (Arma arma in FindObjectsByType<Arma>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
             if (arma.name == nombreArma)
             {
@@ -105,5 +105,47 @@ public class Red : NetworkBehaviour
             }
         }
         Debug.LogWarning("No se encontro el arma: " + nombreArma);
+    }
+
+    [Rpc(SendTo.NotOwner)]
+    public void AvisarRomperCajaRpc(string nombreArma)
+    {
+        foreach (Arma arma in FindObjectsByType<Arma>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (arma.name == nombreArma)
+            {
+                arma.AbrirCajaLocal();
+                return;
+            }
+        }
+    }
+
+    [Rpc(SendTo.Server)]
+    public void SoltarArmaEnPosicionServerRpc(string nombreArma, Vector3 posicion, bool enCaja)
+    {
+        GestorArmas ga = GestorArmas.Instancia;
+        if (ga != null && ga.IsSpawned)
+        {
+            ga.SoltarArmaEnPosicion(nombreArma, posicion, enCaja);
+        }
+        else
+        {
+            SoltarArmaClientesRpc(nombreArma, posicion, enCaja);
+        }
+    }
+
+    [Rpc(SendTo.ClientsAndHost)]
+    private void SoltarArmaClientesRpc(string nombreArma, Vector3 posicion, bool enCaja)
+    {
+        foreach (Arma arma in FindObjectsByType<Arma>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (arma.name == nombreArma)
+            {
+                arma.ColocarEnCaja(enCaja);
+                arma.Soltar(posicion);
+                arma.gameObject.SetActive(true);
+                return;
+            }
+        }
     }
 }
