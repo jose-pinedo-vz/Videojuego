@@ -18,6 +18,7 @@ public class inicio : MonoBehaviour
  
     // variables 
     public static string nombre = "";
+    private bool reiniciando = false;
     public TextMeshProUGUI txt_tiempo;
 
 
@@ -91,6 +92,7 @@ public class inicio : MonoBehaviour
             jugador.MostrarJugador(false);
         }
 
+        if (txt_resultados == null && PanelFin != null) txt_resultados = PanelFin.GetComponentInChildren<TextMeshProUGUI>(true);
         if (txt_resultados != null) txt_resultados.text = armarMarcador();
 
         // panel fin del juego
@@ -103,22 +105,52 @@ public class inicio : MonoBehaviour
         Personaje[] jugadores = FindObjectsByType<Personaje>(FindObjectsSortMode.None);
         System.Array.Sort(jugadores, (a, b) => b.bajas.Value.CompareTo(a.bajas.Value));
 
-        string marcador = "";
-        foreach (Personaje p in jugadores)
-        {
-            Red r = p.GetComponent<Red>();
-            string nombreJugador = r != null ? r.nombreJugador.Value.ToString() : p.name;
-            marcador += nombreJugador + "  -  " + p.bajas.Value + " bajas\n";
-        }
+        if (jugadores.Length == 0) return "";
 
-        if (jugadores.Length > 0)
+        bool empate = jugadores.Length > 1 && jugadores[0].bajas.Value == jugadores[1].bajas.Value;
+        string titulo = empate ? "¡Empate!" : "¡Gana " + nombreDe(jugadores[0]) + "!";
+        string marcador = "<color=#FF9F1C>" + titulo + "</color>\n\n";
+
+        for (int i = 0; i < jugadores.Length; i++)
         {
-            bool empate = jugadores.Length > 1 && jugadores[0].bajas.Value == jugadores[1].bajas.Value;
-            Red ganador = jugadores[0].GetComponent<Red>();
-            string titulo = empate ? "Empate" : "Gana: " + (ganador != null ? ganador.nombreJugador.Value.ToString() : jugadores[0].name);
-            marcador = titulo + "\n\n" + marcador;
+            marcador += (i + 1) + ".  " + nombreDe(jugadores[i]) + "  -  " + jugadores[i].bajas.Value + " bajas\n";
         }
         return marcador;
+    }
+
+    private static string nombreDe(Personaje p)
+    {
+        Red r = p.GetComponent<Red>();
+        return r != null ? r.nombreJugador.Value.ToString() : p.name;
+    }
+
+    // boton "Volver al menu" de la pantalla final: el host cierra la sala y los clientes se desconectan
+    public void volverAlMenu()
+    {
+        if (reiniciando) return;
+        reiniciando = true;
+        StartCoroutine(reiniciarEscena());
+    }
+
+    private System.Collections.IEnumerator reiniciarEscena()
+    {
+        NetworkManager nm = NetworkManager.Singleton;
+        if (nm != null && nm.IsListening) nm.Shutdown();
+        while (nm != null && nm.ShutdownInProgress) yield return null;
+
+        nombre = "";
+        UnityEngine.SceneManagement.SceneManager.LoadScene(gameObject.scene.name);
+    }
+
+    // si el host cierra la sala (o se pierde la conexion) todos regresan al menu
+    private void alDetenerseCliente(bool eraHost)
+    {
+        volverAlMenu();
+    }
+
+    private void OnDestroy()
+    {
+        if (NetworkManager.Singleton != null) NetworkManager.Singleton.OnClientStopped -= alDetenerseCliente;
     }
 
 
@@ -296,8 +328,10 @@ public class inicio : MonoBehaviour
     // async es para permitir mensajes a internet si que se detenga la ejecucion del codigo.
     public async void iniciarServicios()
     {
-        await UnityServices.InitializeAsync();
-        await AuthenticationService.Instance.SignInAnonymouslyAsync();
+        if (UnityServices.State != ServicesInitializationState.Initialized)
+            await UnityServices.InitializeAsync();
+        if (!AuthenticationService.Instance.IsSignedIn)
+            await AuthenticationService.Instance.SignInAnonymouslyAsync();
 
         NetworkManager.Singleton.OnClientConnectedCallback += AlConectarseUnCliente;
     }
@@ -315,6 +349,7 @@ public class inicio : MonoBehaviour
 
         iniciarServicios();
         ocultarPaneles();
+        if (NetworkManager.Singleton != null) NetworkManager.Singleton.OnClientStopped += alDetenerseCliente;
 
         // Corregir textos de botones y etiquetas
         CorregirTextos();

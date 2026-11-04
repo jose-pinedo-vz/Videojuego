@@ -32,6 +32,12 @@ public class Personaje : NetworkBehaviour
     protected Vector3 velocidadCaida; //variable para ver si esta callendo o para mover en el eje y
     public Arma armaEquipada; //Para saber que arma esta usando
     protected Vector3 posicionInicial;
+    protected Vector3 ultimaPosicionSegura; // ultimo punto donde estuvo pisando suelo, para recuperarse de una caida
+
+    // al aparecer en un mapa se espera un momento a que sus colliders esten listos y se revisa que el spawn tenga piso
+    private bool revisarSpawnPendiente = false;
+    private float revisarSpawnEn = 0f;
+    private const float DISTANCIA_CAIDA = 25f; // cuanto puede bajar del spawn antes de considerarse caido del mapa
 
     // bajas (kills) del jugador, solo el servidor las escribe y todos las leen para el marcador
     public NetworkVariable<int> bajas = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
@@ -55,6 +61,12 @@ public class Personaje : NetworkBehaviour
     {
         controlador=GetComponent<CharacterController>(); //Es para los controladores de personaje, como controlar cuando esta chocando con tro objeto
         posicionInicial = transform.position; //Hace que se tome la posicion en la que empezo el jugador
+        ultimaPosicionSegura = posicionInicial;
+
+        // el personaje es muy pequeño: con el skinWidth original (0.08, mas que su radio) se atoraba en paredes y esquinas
+        controlador.skinWidth = 0.02f;
+        controlador.minMoveDistance = 0f;
+        controlador.stepOffset = 0.15f;
         transform.rotation = Quaternion.Euler(0f, direccionPersonaje > 0f ? 90f : -90f, 0f);
 
         animator = GetComponentInChildren<Animator>(); // sirve si el Animator esta en el cuerpo o en el modelo hijo
@@ -74,9 +86,18 @@ public class Personaje : NetworkBehaviour
 
 
 
+        if (revisarSpawnPendiente)
+        {
+            if (revisarSpawnEn < 0f) revisarSpawnEn = Time.time + 0.2f; // empieza a contar cuando el jugador ya esta activo
+            if (Time.time < revisarSpawnEn) return; // quieto mientras el mapa termina de activarse
+            revisarSpawnPendiente = false;
+            AjustarSpawnAlSuelo();
+        }
+
         //Agarra el movimiento y la gravedad
         Mover();
         GravedadJugador();
+        RecuperarDeCaida();
     
         //teclas especiales para funciones
         if (!estaDeslizando)
@@ -184,10 +205,14 @@ public class Personaje : NetworkBehaviour
             //se establece una pequeñavelocidad hacia abajo para mantenerlo pegado al suelo.
         }
 
-        velocidadCaida.y -= gravedad * Time.deltaTime; 
-        Vector3 pasoGravedad = velocidadCaida * Time.deltaTime;
+        // con un tiron de FPS el paso seria enorme y atravesaria el piso, por eso se limita
+        float dt = Mathf.Min(Time.deltaTime, 0.033f);
+        velocidadCaida.y = Mathf.Max(velocidadCaida.y - gravedad * dt, -30f);
+        Vector3 pasoGravedad = velocidadCaida * dt;
         pasoGravedad.z = posicionInicial.z - transform.position.z; //Regresa al plano del spawn, el relieve del mapa empuja al personaje en Z. Va en este Move para no perder isGrounded
         controlador.Move(pasoGravedad);
+        // si pega con un techo se cancela el impulso, si no se queda pegado en el aire
+        if ((controlador.collisionFlags & CollisionFlags.Above) != 0 && velocidadCaida.y > 0f) velocidadCaida.y = 0f;
         //En caso de que lo anterior no suceda entonces simplemente se va reduciendo la posicion del personaje en y hasta que toque el suelo
     }
     //SOLO FALTA QUE APUNTE HACIA ARRIBA... NO SE COMO VA A "APUNTAR" SIQUIERA
@@ -358,9 +383,48 @@ public class Personaje : NetworkBehaviour
         GestorArmas ga = GestorArmas.Instancia;
         if (ga != null) ga.SoltarArma(nombreArma);
     }
+    // Si el jugador cae fuera del mapa vuelve al ultimo suelo que pisó
+    private void RecuperarDeCaida()
+    {
+        if (controlador.isGrounded) ultimaPosicionSegura = transform.position;
+        if (transform.position.y < posicionInicial.y - DISTANCIA_CAIDA) Teletransportar(ultimaPosicionSegura);
+    }
+
+    // Si el spawn quedo flotando o debajo del piso, se mueve al piso mas cercano (hasta 3 m arriba)
+    private void AjustarSpawnAlSuelo()
+    {
+        Vector3 p = transform.position;
+        if (Physics.Raycast(p + Vector3.up * 0.3f, Vector3.down, 3f, ~0, QueryTriggerInteraction.Ignore)) return;
+
+        if (Physics.Raycast(p + Vector3.up * 3f, Vector3.down, out RaycastHit golpe, 6f, ~0, QueryTriggerInteraction.Ignore))
+        {
+            Debug.LogWarning("Spawn sin piso en " + p + ", se movio a " + golpe.point);
+            posicionInicial = golpe.point + Vector3.up * 0.1f;
+            Teletransportar(posicionInicial);
+        }
+        else
+        {
+            Debug.LogWarning("El spawn " + p + " no tiene ningun piso cerca");
+        }
+    }
+
+    // Mueve al jugador sin soltar el arma ni contar muerte
+    protected void Teletransportar(Vector3 destino)
+    {
+        controlador.enabled = false;
+        transform.position = destino;
+        var nt = GetComponent<Unity.Netcode.Components.NetworkTransform>();
+        if (nt != null) nt.Teleport(destino, transform.rotation, transform.localScale);
+        velocidadCaida = Vector3.zero;
+        controlador.enabled = true;
+    }
+
     public void FijarSpawn(Vector3 pos)
     {
         posicionInicial = pos;
+        ultimaPosicionSegura = pos;
+        revisarSpawnPendiente = true;
+        revisarSpawnEn = -1f;
         velocidadCaida = Vector3.zero; //Si iba cayendo en el mapa anterior, que no llegue con esa velocidad al nuevo
     }
 }
