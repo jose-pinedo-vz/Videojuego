@@ -3,7 +3,47 @@ guid: 2175b2db3f73f8115af98102b83dc3be
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: borde
+    second: {fileID: 2100000, guid: 139d1ceee168f912da1837218fbaa5a2, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: cocreto
+    second: {fileID: 2100000, guid: 793bf4305ece5aaf784380773715c11b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: libros
+    second: {fileID: 2100000, guid: 503977081f85e48299ae01f8fafad183, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: mueble
+    second: {fileID: 2100000, guid: f81380d4681572c90992f357742d7f34, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: sillon1
+    second: {fileID: 2100000, guid: a99e5cf726b7d9a9194050de759f18a6, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: sillon2
+    second: {fileID: 2100000, guid: a122f60d1dbe5410aa92d7483eddfd6f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: tela
+    second: {fileID: 2100000, guid: 4254c32be31000cc0bc1cf998379f5b2, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: tele
+    second: {fileID: 2100000, guid: 57cfa8619c04ffa6baab61bb407d873f, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

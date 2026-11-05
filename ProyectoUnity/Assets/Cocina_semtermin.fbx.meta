@@ -3,7 +3,77 @@ guid: 15617258c1fb49310a9f223c8504a78e
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.003
+    second: {fileID: 2100000, guid: 1bc9fa8cd3cf0b6c38a6458ca9f6a433, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: caja
+    second: {fileID: 2100000, guid: 4fafc40d71bf081f4a55ff8f7bd22263, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: colorpared
+    second: {fileID: 2100000, guid: 572dd7c6eb1807808b3635af5e0e09a7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: escombro
+    second: {fileID: 2100000, guid: b916df81a05f30e53a92d96111eb13f3, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: imagen
+    second: {fileID: 2100000, guid: fa807290674d2b67db413d8491f1da03, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: maderades
+    second: {fileID: 2100000, guid: bd1bbb929e9960eb894b572d9d5de35d, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: muebles
+    second: {fileID: 2100000, guid: d51bc5dce0489ba9bbd9727edab52ce4, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: negromatal
+    second: {fileID: 2100000, guid: fea95974a583420a0afa6855e87cd3b4, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: oxidado
+    second: {fileID: 2100000, guid: af2ffdf0722d96a5a8a53dccd060579a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: piso
+    second: {fileID: 2100000, guid: d7fd688d0f65159d3892f42e0e066de3, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: refri
+    second: {fileID: 2100000, guid: 4f973267a30fbebbfaca45c7e295d7a0, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: repisa
+    second: {fileID: 2100000, guid: fca43211d4450c4f38fcaa408cfd4fda, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: techo
+    second: {fileID: 2100000, guid: 4b74c17d0c7a435e28fac23f2a40c89b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: ventana
+    second: {fileID: 2100000, guid: e5a20a79c91fb40379ba4ee2c59295f3, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

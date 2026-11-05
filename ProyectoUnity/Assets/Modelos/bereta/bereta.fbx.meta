@@ -3,7 +3,22 @@ guid: b2d1de273f14d934e98bcac15ad537f0
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: FIerro todavia mas culero
+    second: {fileID: 2100000, guid: 7a2256a17759a11449b6e060ffcf4883, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Fierro
+    second: {fileID: 2100000, guid: ed5df145e63a58019b6336d8ee19157e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Polimero
+    second: {fileID: 2100000, guid: c648c98b68ee948f584fc4fbab6287a6, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

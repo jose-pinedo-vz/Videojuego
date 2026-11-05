@@ -37,6 +37,8 @@ public class Personaje : NetworkBehaviour
     // al aparecer en un mapa se espera un momento a que sus colliders esten listos y se revisa que el spawn tenga piso
     private bool revisarSpawnPendiente = false;
     private float revisarSpawnEn = 0f;
+    private bool muriendo = false;
+    private const float DURACION_MUERTE = 0.5f; // segundos de la animacion de desaparicion
     private const float DISTANCIA_CAIDA = 25f; // cuanto puede bajar del spawn antes de considerarse caido del mapa
 
     // bajas (kills) del jugador, solo el servidor las escribe y todos las leen para el marcador
@@ -83,6 +85,7 @@ public class Personaje : NetworkBehaviour
 
         if (IsSpawned && !IsOwner) return; // un objeto por equipo en red
         if (!GetComponentInChildren<Renderer>().enabled) return; // espera a que empeise la partida
+        if (muriendo) return; // en plena animacion de muerte no se mueve
 
 
 
@@ -323,7 +326,7 @@ public class Personaje : NetworkBehaviour
         Debug.Log("Auch, me dio: "+atacante);
         // se le avisa al servidor, que es quien cuenta la baja y manda a morir al duenio de este personaje
         if (atacante != null) atacante.ReportarImpactoRpc(NetworkObject);
-        else MorirDuenioRpc();
+        else MorirDuenioRpc(posicionInicial);
     }
 
     // lo llama el que disparo, se ejecuta en el servidor
@@ -335,7 +338,11 @@ public class Personaje : NetworkBehaviour
         if (victima == null || victima == this) return;
 
         bajas.Value++; //Se le da un punto al que lo mato
-        victima.MorirDuenioRpc();
+
+        // el servidor elige en que otro spawn reaparece la victima
+        GameManager gm = FindFirstObjectByType<GameManager>();
+        Vector3 destino = gm != null ? gm.SpawnAleatorio(victima.transform.position) : victima.posicionInicial;
+        victima.MorirDuenioRpc(destino);
     }
 
     // el trazo del disparo para que lo vean los demas jugadores
@@ -346,42 +353,63 @@ public class Personaje : NetworkBehaviour
     }
 
     [Rpc(SendTo.Owner)]
-    private void MorirDuenioRpc()
+    private void MorirDuenioRpc(Vector3 destino)
     {
-        morir(null);
+        if (muriendo) return;
+        StartCoroutine(MorirYReaparecer(destino));
+    }
+
+    // Solo para que los demas vean la animacion de desaparicion
+    [Rpc(SendTo.NotOwner)]
+    private void AnimarMuerteRpc()
+    {
+        StartCoroutine(AnimacionMuerte());
+    }
+
+    // Se encoge girando hasta desaparecer, despues se restaura el tamaño original
+    private IEnumerator AnimacionMuerte()
+    {
+        Transform modelo = (animator != null && animator.transform != transform) ? animator.transform : transform;
+        Vector3 escalaOriginal = modelo.localScale;
+        float t = 0f;
+        while (t < DURACION_MUERTE)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / DURACION_MUERTE);
+            modelo.localScale = escalaOriginal * (1f - k);
+            modelo.Rotate(0f, 720f * Time.deltaTime, 0f, Space.Self);
+            yield return null;
+        }
+        modelo.localScale = Vector3.zero;
+        yield return new WaitForSeconds(0.25f); // desaparecido un momento antes de reaparecer
+        modelo.localScale = escalaOriginal;
+        modelo.localRotation = Quaternion.identity;
+    }
+
+    private IEnumerator MorirYReaparecer(Vector3 destino)
+    {
+        muriendo = true;
+        velocidadCaida = Vector3.zero;
+
+        // Soltar el arma justo donde muere, antes de desaparecer
+        if (armaEquipada != null) armaEquipada.SoltarVoluntariamente();
+        armaEquipada = null;
+
+        if (IsSpawned) AnimarMuerteRpc();
+        yield return AnimacionMuerte();
+
+        // reaparece en otro spawn
+        Quaternion rotacionSpawn = Quaternion.Euler(0f, direccionPersonaje > 0f ? 90f : -90f, 0f);
+        transform.rotation = rotacionSpawn;
+        Teletransportar(destino);
+        FijarSpawn(destino);
+        muriendo = false;
     }
 
     public virtual void morir(Personaje atacante)
     {
-        //atacante.muertes++;//Se le da un punto al que lo mato
-        //atacante.muertes++;
         if (atacante != null) atacante.muertes++;
-
-        // Soltar arma antes de teletransportarse para que no se vaya con el jugador
-        if (armaEquipada != null)
-        {
-            SoltarArmaServRpc(armaEquipada.gameObject.name);
-            armaEquipada = null;
-        }
-
-        controlador.enabled=false;//Se desactiva al personaje controller para que no haya broncas
-
-        transform.position=posicionInicial; //Se envia al personaje a su posicion de spawn
-        Quaternion rotacionSpawn = Quaternion.Euler(0f, direccionPersonaje > 0f ? 90f : -90f, 0f);
-        transform.rotation = rotacionSpawn;
-        var nt = GetComponent<Unity.Netcode.Components.NetworkTransform>();
-        if (nt != null) nt.Teleport(posicionInicial, rotacionSpawn, transform.localScale);
-
-        velocidadCaida=Vector3.zero; //Para que no haya problemas raros con la velocidad de caida
-        controlador.enabled=true;
-    }
-
-    // El dueño le avisa al servidor qué arma soltar, el servidor llama a GestorArmas
-    [Rpc(SendTo.Server)]
-    private void SoltarArmaServRpc(string nombreArma)
-    {
-        GestorArmas ga = GestorArmas.Instancia;
-        if (ga != null) ga.SoltarArma(nombreArma);
+        if (!muriendo) StartCoroutine(MorirYReaparecer(posicionInicial));
     }
     // Si el jugador cae fuera del mapa vuelve al ultimo suelo que pisó
     private void RecuperarDeCaida()

@@ -3,7 +3,42 @@ guid: 55419abde4a5a3049a8705eb0464e7ff
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Cabeza.001
+    second: {fileID: 2100000, guid: 59af4470b3b0e6d10ae402349ec69b04, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: bigote
+    second: {fileID: 2100000, guid: f516b8744bbdbb52ea1580e7447038f6, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: boca
+    second: {fileID: 2100000, guid: f98163c2142721affa524aa16b8cb581, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: diente
+    second: {fileID: 2100000, guid: e8c8f3d2fee16d91aafdb72a269941a9, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: garra
+    second: {fileID: 2100000, guid: d942de5d47837ec909d727f21705d967, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: ojo
+    second: {fileID: 2100000, guid: 73896e634eb77a9eea008911555cab0d, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: ojo.001
+    second: {fileID: 2100000, guid: 85d47901fa6e83694a0586f4af5fc625, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
