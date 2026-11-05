@@ -20,6 +20,7 @@ GameObject:
   - component: {fileID: 8964496498951120773}
   - component: {fileID: 3132981408202177916}
   - component: {fileID: -9148232872362560921}
+  - component: {fileID: 3424810128536449250}
   m_Layer: 0
   m_Name: cuerpo
   m_TagString: Player
@@ -260,6 +261,11 @@ MonoBehaviour:
   duracionDeslizar: 0.5
   velicidadAgachado: 2
   armaEquipada: {fileID: 0}
+  bajas:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
 --- !u!114 &8964496498951120773
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -310,6 +316,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AnimadorPuente
   ShowTopMostFoldoutHeaderGroup: 1
+--- !u!114 &3424810128536449250
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4727309435882241434}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 60e0ca2daa8c65becbbc1da923801ea9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AnimadorArma
 --- !u!1 &6416032965922898183
 GameObject:
   m_ObjectHideFlags: 0
@@ -401,6 +419,34 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: -7601656468728269506, guid: 5a33507ddfafd10bea1dc682bb342126, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 816dbafb94861d800be6faea92b51a57, type: 2}
+    - target: {fileID: -7601656468728269506, guid: 5a33507ddfafd10bea1dc682bb342126, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 55bcc0b586039443cb9d3784b89b9ae9, type: 2}
+    - target: {fileID: -7601656468728269506, guid: 5a33507ddfafd10bea1dc682bb342126, type: 3}
+      propertyPath: 'm_Materials.Array.data[2]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 29d19367fc622763e90b492f7e4e3601, type: 2}
+    - target: {fileID: -7601656468728269506, guid: 5a33507ddfafd10bea1dc682bb342126, type: 3}
+      propertyPath: 'm_Materials.Array.data[3]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 21b274a0d3d4f27cfb3226b4f62d682c, type: 2}
+    - target: {fileID: -7601656468728269506, guid: 5a33507ddfafd10bea1dc682bb342126, type: 3}
+      propertyPath: 'm_Materials.Array.data[4]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 395c859c5ce23b53086568ca0a21e83c, type: 2}
+    - target: {fileID: -7601656468728269506, guid: 5a33507ddfafd10bea1dc682bb342126, type: 3}
+      propertyPath: 'm_Materials.Array.data[5]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 214489f00699d7d7ba9a87054e478b77, type: 2}
+    - target: {fileID: -7601656468728269506, guid: 5a33507ddfafd10bea1dc682bb342126, type: 3}
+      propertyPath: 'm_Materials.Array.data[6]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 2dadafb25381db3aea880f09cf2ca687, type: 2}
     - target: {fileID: 919132149155446097, guid: 5a33507ddfafd10bea1dc682bb342126, type: 3}
       propertyPath: m_Name
       value: Personaje gato
