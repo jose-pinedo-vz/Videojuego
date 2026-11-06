@@ -38,7 +38,8 @@ public class Personaje : NetworkBehaviour
     private bool revisarSpawnPendiente = false;
     private float revisarSpawnEn = 0f;
     private bool muriendo = false;
-    private const float DURACION_MUERTE = 0.5f; // segundos de la animacion de desaparicion
+    private const float DURACION_MUERTE = 1.1f; // segundos que dura el modelo hecho pedazos antes de reaparecer
+    private const int CUBOS_MUERTE = 22;       // cantidad de cubitos en que se rompe el modelo
     private const float DISTANCIA_CAIDA = 25f; // cuanto puede bajar del spawn antes de considerarse caido del mapa
 
     // bajas (kills) del jugador, solo el servidor las escribe y todos las leen para el marcador
@@ -366,23 +367,74 @@ public class Personaje : NetworkBehaviour
         StartCoroutine(AnimacionMuerte());
     }
 
-    // Se encoge girando hasta desaparecer, despues se restaura el tamaño original
+    // El modelo se rompe en cubitos de colores que salen disparados, caen con fisica y se encogen; despues reaparece
     private IEnumerator AnimacionMuerte()
     {
         Transform modelo = (animator != null && animator.transform != transform) ? animator.transform : transform;
-        Vector3 escalaOriginal = modelo.localScale;
+
+        // renderizadores del cuerpo (sin el arma ni efectos)
+        List<Renderer> cuerpo = new List<Renderer>();
+        List<Material> materiales = new List<Material>();
+        foreach (Renderer r in modelo.GetComponentsInChildren<Renderer>(false))
+        {
+            if (!(r is MeshRenderer) && !(r is SkinnedMeshRenderer)) continue;
+            if (r.GetComponentInParent<Arma>() != null) continue;
+            if (!r.enabled) continue;
+            cuerpo.Add(r);
+            foreach (Material m in r.sharedMaterials) if (m != null) materiales.Add(m);
+        }
+
+        Bounds area = new Bounds(transform.position + Vector3.up, Vector3.one * 0.5f);
+        bool primero = true;
+        foreach (Renderer r in cuerpo) { if (primero) { area = r.bounds; primero = false; } else area.Encapsulate(r.bounds); }
+
+        foreach (Renderer r in cuerpo) r.enabled = false; // el modelo desaparece y en su lugar quedan los cubos
+
+        List<GameObject> cubos = new List<GameObject>();
+        for (int i = 0; i < CUBOS_MUERTE; i++)
+        {
+            GameObject cubo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cubo.name = "CuboMuerte";
+            float lado = Random.Range(0.12f, 0.26f);
+            cubo.transform.localScale = Vector3.one * lado;
+            cubo.transform.position = new Vector3(
+                Random.Range(area.min.x, area.max.x),
+                Random.Range(area.min.y, area.max.y),
+                Mathf.Lerp(area.min.z, area.max.z, 0.5f) + Random.Range(-0.1f, 0.1f));
+            cubo.transform.rotation = Random.rotation;
+
+            MeshRenderer mr = cubo.GetComponent<MeshRenderer>();
+            if (materiales.Count > 0) mr.sharedMaterial = materiales[Random.Range(0, materiales.Count)];
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            Collider col = cubo.GetComponent<Collider>();
+            if (controlador != null) Physics.IgnoreCollision(col, controlador); // no empujan al jugador que muere
+
+            Rigidbody rb = cubo.AddComponent<Rigidbody>();
+            rb.mass = 0.2f;
+            Vector3 hacia = (cubo.transform.position - area.center);
+            hacia.z *= 0.2f; // se mantienen casi en el plano de juego
+            rb.linearVelocity = hacia.normalized * Random.Range(1.5f, 3.5f) + Vector3.up * Random.Range(2f, 4.5f);
+            rb.angularVelocity = Random.insideUnitSphere * 8f;
+            cubos.Add(cubo);
+        }
+
         float t = 0f;
+        float inicioEncoger = DURACION_MUERTE * 0.6f;
         while (t < DURACION_MUERTE)
         {
             t += Time.deltaTime;
-            float k = Mathf.Clamp01(t / DURACION_MUERTE);
-            modelo.localScale = escalaOriginal * (1f - k);
-            modelo.Rotate(0f, 720f * Time.deltaTime, 0f, Space.Self);
+            if (t > inicioEncoger)
+            {
+                float k = Mathf.InverseLerp(inicioEncoger, DURACION_MUERTE, t);
+                foreach (GameObject c in cubos) if (c != null) c.transform.localScale = c.transform.localScale * (1f - k * 0.15f);
+            }
             yield return null;
         }
-        modelo.localScale = Vector3.zero;
-        yield return new WaitForSeconds(0.25f); // desaparecido un momento antes de reaparecer
-        modelo.localScale = escalaOriginal;
+        foreach (GameObject c in cubos) if (c != null) Destroy(c);
+
+        yield return new WaitForSeconds(0.25f); // sin cuerpo un momento antes de reaparecer
+        foreach (Renderer r in cuerpo) if (r != null) r.enabled = true;
         modelo.localRotation = Quaternion.identity;
     }
 
