@@ -873,7 +873,13 @@ public class HudMunicion : MonoBehaviour
         Arma arma = jugador != null ? jugador.armaEquipada : null;
         float objetivo = 0f;
         if (arma != null && !arma.EnCaja && arma.MunicionMaxima > 0)
-            objetivo = arma.Recargando ? 0f : (float)arma.MunicionActual / arma.MunicionMaxima;
+        {
+            if (arma.Recargando) objetivo = 0f;
+            else if (arma.Modo == ModoDisparo.RayoContinuo && arma.CargandoRayo)
+                objetivo = arma.TiempoCargaActual / Mathf.Max(arma.TiempoCargaRequerido, 0.01f);
+            else
+                objetivo = (float)arma.MunicionActual / arma.MunicionMaxima;
+        }
 
         actual = Mathf.MoveTowards(actual, objetivo, 3f * Time.unscaledDeltaTime);
         relleno.anchorMax = new Vector2(Mathf.Clamp01(actual), 1f);

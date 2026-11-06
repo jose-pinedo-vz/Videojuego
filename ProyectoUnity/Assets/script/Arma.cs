@@ -1,7 +1,15 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections;
+using System.Collections.Generic;
 using Unity.Netcode;
+
+public enum ModoDisparo
+{
+    Semiautomatico,
+    Automatico,
+    RayoContinuo
+}
 
 public class Arma : MonoBehaviour
 {
@@ -24,6 +32,24 @@ public class Arma : MonoBehaviour
     private bool enCaja = false;
     private GameObject cajaVisual;
     private static int ultimoFrameAccionC = -1;
+
+    [Header("Modo de Disparo")]
+    [SerializeField] protected ModoDisparo modoDisparo = ModoDisparo.Semiautomatico;
+
+    [Header("Raygun (Rayo Continuo)")]
+    [SerializeField] protected float tiempoCargaRequerido = 3.0f;
+    [SerializeField] protected float duracionBateriaMaxima = 10.0f;
+    [SerializeField] protected float anchoRayo = 1.0f;
+    [SerializeField] protected float radioRayo = 0.5f;
+    [SerializeField] protected float alcanceRayo = 80.0f;
+
+    private float tiempoCargaActual = 0f;
+    private float duracionBateriaActual = 10.0f;
+    private bool disparandoRayo = false;
+    private bool cargandoRayo = false;
+    private bool disparandoRayoRemoto = false;
+    private AudioSource audioLoopRayo;
+    private HashSet<Personaje> victimasAlcanzadas = new HashSet<Personaje>();
 
     [SerializeField] protected Vector3 rotacionEnMano = Vector3.zero; //Estos 2 son para controlar donde la va a agarrar
     [SerializeField] protected Vector3 posicionEnMano = Vector3.zero; //Ocupare ayuda en esto porque es a mano, ojo de buen cubero y presicion
@@ -50,16 +76,25 @@ public class Arma : MonoBehaviour
     [Tooltip("Tamanio del area de recogida (solo aplica si el collider es un BoxCollider). Vector3.zero = no tocar el tamanio que ya tiene en el editor")]
     [SerializeField] protected Vector3 tamanoAreaRecogida = Vector3.zero;
 
-    public int MunicionActual => municionActual;
-    public int MunicionMaxima => municionMaxima;
+    public int MunicionActual => modoDisparo == ModoDisparo.RayoContinuo ? Mathf.CeilToInt(duracionBateriaActual) : municionActual;
+    public int MunicionMaxima => modoDisparo == ModoDisparo.RayoContinuo ? Mathf.CeilToInt(duracionBateriaMaxima) : municionMaxima;
     public bool Recargando => recargando;
     public bool EnCaja => enCaja;
     public string NombreMostrado => enCaja ? "Caja de madera" : (string.IsNullOrEmpty(nombreMostrado) ? gameObject.name : nombreMostrado);
     public float TiempoRecogida => tiempoRecogida;
+    public ModoDisparo Modo => modoDisparo;
+    public float AnchoRayo => anchoRayo;
+    public float TiempoCargaActual => tiempoCargaActual;
+    public float TiempoCargaRequerido => tiempoCargaRequerido;
+    public float DuracionBateriaActual => duracionBateriaActual;
+    public float DuracionBateriaMaxima => duracionBateriaMaxima;
+    public bool DisparandoRayo => disparandoRayo;
+    public bool CargandoRayo => cargandoRayo;
 
     protected virtual void Awake()
     {
         municionActual = municionMaxima;
+        duracionBateriaActual = duracionBateriaMaxima;
         rotacionInicial = transform.rotation;
         rotacionBaseIzquierda = CalcularRotacionBaseIzquierda();
 
@@ -91,11 +126,26 @@ public class Arma : MonoBehaviour
 
     public void ConfigurarDatosArma(float cadencia, float alcance, int municionMax, float recarga)
     {
+        ConfigurarDatosArma(cadencia, alcance, municionMax, recarga, modoDisparo, Dispersion);
+    }
+
+    public void ConfigurarDatosArma(float cadencia, float alcance, int municionMax, float recarga, ModoDisparo modo, float dispersion)
+    {
         Cadencia = cadencia;
         Alcance = alcance;
         municionMaxima = municionMax;
         municionActual = municionMax;
         tiempoRecarga = recarga;
+        modoDisparo = modo;
+        Dispersion = dispersion;
+
+        if (modoDisparo == ModoDisparo.RayoContinuo)
+        {
+            duracionBateriaMaxima = municionMax > 0 ? (float)municionMax : 10.0f;
+            duracionBateriaActual = duracionBateriaMaxima;
+            tiempoCargaActual = 0f;
+            alcanceRayo = alcance > 0f ? alcance : 80f;
+        }
     }
 
     private void InicializarRenderizadoresArma()
@@ -393,7 +443,17 @@ public class Arma : MonoBehaviour
         if (jugadorQueLaEquipo != null)
         {
             ActualizarRotacionEnMano();
+
+            if (disparandoRayo && (!jugadorQueLaEquipo.IsSpawned || jugadorQueLaEquipo.IsOwner))
+            {
+                ActualizarFisicaYVisualRayo();
+            }
         }
+    }
+
+    protected virtual void OnDisable()
+    {
+        DetenerRayoContinuo();
     }
 
     private void ActualizarRotacionEnMano()
@@ -482,13 +542,278 @@ public class Arma : MonoBehaviour
         trazo.positionCount = 2;
         trazo.SetPosition(0, inicio);
         trazo.SetPosition(1, fin);
+        trazo.startWidth = 0.05f;
+        trazo.endWidth = 0.05f;
         trazo.enabled = true;
-        yield return new WaitForSeconds(0.1f);
-        trazo.enabled = false;
+        float duracionTrazo = modoDisparo == ModoDisparo.Automatico ? Mathf.Clamp(0.7f / Cadencia, 0.025f, 0.08f) : 0.1f;
+        yield return new WaitForSeconds(duracionTrazo);
+        if (!disparandoRayo && !disparandoRayoRemoto)
+            trazo.enabled = false;
+    }
+
+    // Procesa la entrada continua o por pulsos segun el modo del arma
+    public void ProcesarEntradaDisparo(bool presionando, bool presionoEsteFrame, bool soltoEsteFrame)
+    {
+        if (jugadorQueLaEquipo == null) return;
+
+        // Si esta dentro de una caja de madera, cualquier pulsacion de V la rompe
+        if (enCaja)
+        {
+            if (presionoEsteFrame) RomperCaja();
+            return;
+        }
+
+        if (recargando)
+        {
+            if (disparandoRayo || cargandoRayo) DetenerRayoContinuo();
+            return;
+        }
+
+        switch (modoDisparo)
+        {
+            case ModoDisparo.Semiautomatico:
+                if (presionoEsteFrame) Disparar();
+                break;
+
+            case ModoDisparo.Automatico:
+                if (presionando)
+                {
+                    if (municionActual <= 0)
+                    {
+                        if (presionoEsteFrame) Sonidos.Reproducir("sin_municion", transform.position, 0.8f);
+                        return;
+                    }
+                    if (Time.time >= tiempoUltimoDisparo + (1f / Cadencia))
+                    {
+                        Disparar();
+                    }
+                }
+                break;
+
+            case ModoDisparo.RayoContinuo:
+                ProcesarRayoContinuo(presionando, presionoEsteFrame, soltoEsteFrame);
+                break;
+        }
+    }
+
+    private void ProcesarRayoContinuo(bool presionando, bool presionoEsteFrame, bool soltoEsteFrame)
+    {
+        if (duracionBateriaActual <= 0f)
+        {
+            if (disparandoRayo || cargandoRayo) DetenerRayoContinuo();
+            if (presionoEsteFrame) Sonidos.Reproducir("sin_municion", transform.position, 0.8f);
+            return;
+        }
+
+        if (presionando)
+        {
+            if (tiempoCargaActual < tiempoCargaRequerido)
+            {
+                if (!cargandoRayo)
+                {
+                    cargandoRayo = true;
+                    IniciarAudioCarga();
+                }
+                tiempoCargaActual += Time.deltaTime;
+
+                if (tiempoCargaActual >= tiempoCargaRequerido)
+                {
+                    tiempoCargaActual = tiempoCargaRequerido;
+                    cargandoRayo = false;
+                    disparandoRayo = true;
+                    IniciarAudioRayo();
+                }
+            }
+            else
+            {
+                disparandoRayo = true;
+                duracionBateriaActual -= Time.deltaTime;
+                if (duracionBateriaActual <= 0f)
+                {
+                    duracionBateriaActual = 0f;
+                    DetenerRayoContinuo();
+                    return;
+                }
+                ActualizarFisicaYVisualRayo();
+            }
+        }
+        else
+        {
+            if (cargandoRayo || disparandoRayo || tiempoCargaActual > 0f)
+            {
+                DetenerRayoContinuo();
+            }
+        }
+    }
+
+    private void ActualizarFisicaYVisualRayo()
+    {
+        if (jugadorQueLaEquipo == null) return;
+
+        float dirX = jugadorQueLaEquipo.DireccionHorizontal;
+        Vector3 direccion = new Vector3(dirX, 0f, 0f).normalized;
+
+        Vector3 inicioTrazo = transform.position;
+        Bounds b = ObtenerBoundsArma();
+        if (b.size.sqrMagnitude > 0.00001f)
+        {
+            inicioTrazo = new Vector3(dirX > 0f ? b.max.x : b.min.x, b.center.y, b.center.z);
+        }
+
+        Vector3 origen = inicioTrazo;
+        origen.x = jugadorQueLaEquipo.transform.position.x;
+        origen.z = jugadorQueLaEquipo.transform.position.z;
+
+        float distanciaMax = alcanceRayo > 0f ? alcanceRayo : (Alcance > 20f ? Alcance : 80f);
+        float distanciaImpacto = distanciaMax;
+        Vector3 puntoFinal = origen + direccion * distanciaMax;
+
+        // Choque con pared u obstaculo solido
+        RaycastHit[] impactosPared = Physics.RaycastAll(origen, direccion, distanciaMax, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        float menorDistanciaSolida = float.MaxValue;
+        foreach (RaycastHit hit in impactosPared)
+        {
+            if (hit.distance <= 0.05f) continue;
+            if (hit.collider.transform.IsChildOf(jugadorQueLaEquipo.transform) ||
+                hit.collider.GetComponentInParent<Personaje>() == jugadorQueLaEquipo)
+                continue;
+
+            Personaje p = hit.collider.GetComponentInParent<Personaje>();
+            if (p == null)
+            {
+                if (hit.distance < menorDistanciaSolida)
+                {
+                    menorDistanciaSolida = hit.distance;
+                    distanciaImpacto = hit.distance;
+                    puntoFinal = hit.point;
+                }
+            }
+        }
+
+        // Colision gruesa del ancho del personaje (SphereCastAll)
+        RaycastHit[] impactosEnemigos = Physics.SphereCastAll(origen, radioRayo, direccion, distanciaImpacto, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        foreach (RaycastHit hit in impactosEnemigos)
+        {
+            if (hit.collider == null) continue;
+            Personaje victima = hit.collider.GetComponentInParent<Personaje>();
+            if (victima != null && victima != jugadorQueLaEquipo)
+            {
+                if (!victimasAlcanzadas.Contains(victima))
+                {
+                    victimasAlcanzadas.Add(victima);
+                    victima.RecibirDaño(jugadorQueLaEquipo);
+                }
+            }
+        }
+
+        // Visual del rayo
+        if (trazo == null) trazo = GetComponent<LineRenderer>();
+        Vector3 finTrazo = new Vector3(puntoFinal.x, puntoFinal.y, inicioTrazo.z);
+        if (trazo != null)
+        {
+            trazo.positionCount = 2;
+            trazo.SetPosition(0, inicioTrazo);
+            trazo.SetPosition(1, finTrazo);
+            trazo.startWidth = anchoRayo;
+            trazo.endWidth = anchoRayo;
+            trazo.widthCurve = AnimationCurve.Constant(0f, 1f, 1f);
+            trazo.widthMultiplier = anchoRayo;
+            trazo.enabled = true;
+        }
+
+        if (jugadorQueLaEquipo != null && jugadorQueLaEquipo.IsSpawned)
+        {
+            jugadorQueLaEquipo.ActualizarEstadoRayoRpc(true, inicioTrazo, finTrazo, anchoRayo);
+        }
+    }
+
+    public void DetenerRayoContinuo()
+    {
+        tiempoCargaActual = 0f;
+        cargandoRayo = false;
+        disparandoRayo = false;
+        victimasAlcanzadas.Clear();
+        DetenerAudiosRayo();
+
+        if (trazo != null) trazo.enabled = false;
+
+        if (jugadorQueLaEquipo != null && jugadorQueLaEquipo.IsSpawned)
+        {
+            jugadorQueLaEquipo.ActualizarEstadoRayoRpc(false, Vector3.zero, Vector3.zero, 0f);
+        }
+    }
+
+    public void ActualizarRayoRemoto(bool activo, Vector3 inicio, Vector3 fin, float ancho)
+    {
+        if (trazo == null) trazo = GetComponent<LineRenderer>();
+        if (trazo != null)
+        {
+            if (activo)
+            {
+                trazo.positionCount = 2;
+                trazo.SetPosition(0, inicio);
+                trazo.SetPosition(1, fin);
+                trazo.startWidth = ancho;
+                trazo.endWidth = ancho;
+                trazo.widthCurve = AnimationCurve.Constant(0f, 1f, 1f);
+                trazo.widthMultiplier = ancho;
+                trazo.enabled = true;
+                if (!disparandoRayoRemoto)
+                {
+                    disparandoRayoRemoto = true;
+                    IniciarAudioRayo();
+                }
+            }
+            else
+            {
+                trazo.enabled = false;
+                disparandoRayoRemoto = false;
+                DetenerAudiosRayo();
+            }
+        }
+    }
+
+    private void IniciarAudioCarga()
+    {
+        Sonidos.Reproducir("tick", transform.position, 1.2f, 1.6f);
+    }
+
+    private void IniciarAudioRayo()
+    {
+        if (audioLoopRayo == null)
+        {
+            audioLoopRayo = gameObject.AddComponent<AudioSource>();
+            audioLoopRayo.playOnAwake = false;
+            audioLoopRayo.loop = true;
+            audioLoopRayo.spatialBlend = 0f;
+        }
+        AudioClip clip = Resources.Load<AudioClip>("Audio/raygun_laser");
+        if (clip == null) clip = Resources.Load<AudioClip>("Audio/disparo_raygun");
+        if (clip != null && audioLoopRayo != null)
+        {
+            audioLoopRayo.clip = clip;
+            audioLoopRayo.volume = 0.55f;
+            audioLoopRayo.Play();
+        }
+    }
+
+    private void DetenerAudiosRayo()
+    {
+        if (audioLoopRayo != null && audioLoopRayo.isPlaying)
+        {
+            audioLoopRayo.Stop();
+        }
     }
 
     public virtual void Disparar()
     {
+        // Si el modo es rayo continuo, se canaliza por la logica de rayo
+        if (modoDisparo == ModoDisparo.RayoContinuo)
+        {
+            ProcesarRayoContinuo(true, true, false);
+            return;
+        }
+
         // Si el jugador tiene una caja de madera en las manos, presionar V la rompe para descubrir el arma
         if (enCaja)
         {
@@ -606,21 +931,35 @@ public class Arma : MonoBehaviour
         ActualizarRotacionEnMano();
         recargando = false;
         municionActual = municionMaxima; // el arma se recoge con el cargador lleno
+        duracionBateriaActual = duracionBateriaMaxima;
+        tiempoCargaActual = 0f;
+        DetenerRayoContinuo();
     }
 
     // Se llama al presionar R. Si ya esta recargando o el cargador esta lleno, no hace nada
     public void IniciarRecarga()
     {
-        if (recargando || municionActual >= municionMaxima) return;
+        if (recargando) return;
+        if (modoDisparo == ModoDisparo.RayoContinuo)
+        {
+            if (duracionBateriaActual >= duracionBateriaMaxima) return;
+        }
+        else
+        {
+            if (municionActual >= municionMaxima) return;
+        }
         StartCoroutine(RecargarAhoraSi());
     }
 
     private IEnumerator RecargarAhoraSi()
     {
         recargando = true;
+        if (disparandoRayo || cargandoRayo) DetenerRayoContinuo();
         Debug.Log("Recargando...");
         yield return new WaitForSeconds(tiempoRecarga);
         municionActual = municionMaxima;
+        duracionBateriaActual = duracionBateriaMaxima;
+        tiempoCargaActual = 0f;
         recargando = false;
     }
 
@@ -681,6 +1020,9 @@ public class Arma : MonoBehaviour
         StopAllCoroutines(); // cancela una recarga en curso, si la habia
         recargando = false;
         municionActual = municionMaxima; // queda lista para el siguiente que la recoja
+        duracionBateriaActual = duracionBateriaMaxima;
+        tiempoCargaActual = 0f;
+        DetenerRayoContinuo();
 
         transform.parent = null;
         transform.rotation = rotacionBaseIzquierda;
@@ -700,6 +1042,7 @@ public class Arma : MonoBehaviour
     public void SoltarVoluntariamente()
     {
         Debug.Log("SoltarVoluntariamente() llamado");
+        DetenerRayoContinuo();
         if (jugadorQueLaEquipo == null)
         {
             Debug.Log("jugadorQueLaEquipo es null, no se puede soltar");

@@ -19,17 +19,19 @@ public static class CrearSpawns
         public Vector3 rotacionEuler;
         public float cadencia;
         public float alcance;
+        public float dispersion;
         public int municionMax;
         public float tiempoRecarga;
+        public ModoDisparo modo;
     }
 
     private static readonly DatosModeloArma[] MODELOS_ARMAS = new DatosModeloArma[]
     {
-        new DatosModeloArma { nombre = "ak47",   rutaFbx = "Assets/Modelos/ak/ak47.fbx",       escala = new Vector3(0.2f, 0.2f, 0.2f),       rotacionEuler = Vector3.zero,                 cadencia = 10f,  alcance = 6f,   municionMax = 30, tiempoRecarga = 1.8f },
-        new DatosModeloArma { nombre = "barret", rutaFbx = "Assets/Modelos/barret/barret.fbx", escala = new Vector3(0.208f, 0.208f, 0.208f), rotacionEuler = new Vector3(0f, 90f, -90f),   cadencia = 1.5f, alcance = 15f,  municionMax = 5,  tiempoRecarga = 2.5f },
-        new DatosModeloArma { nombre = "mac10",  rutaFbx = "Assets/Modelos/mac10/mac10.fbx",   escala = new Vector3(0.25f, 0.25f, 0.25f),    rotacionEuler = new Vector3(0f, 0f, 180f),    cadencia = 14f,  alcance = 4.5f, municionMax = 32, tiempoRecarga = 1.4f },
-        new DatosModeloArma { nombre = "bereta", rutaFbx = "Assets/Modelos/bereta/bereta.fbx", escala = new Vector3(25f, 25f, 25f),          rotacionEuler = new Vector3(0f, 180f, 0f),    cadencia = 5f,   alcance = 5.5f, municionMax = 12, tiempoRecarga = 1.2f },
-        new DatosModeloArma { nombre = "raygun", rutaFbx = "Assets/Modelos/raygun/raygun.fbx", escala = new Vector3(0.15f, 0.15f, 0.15f),    rotacionEuler = new Vector3(0f, 180f, 0f),    cadencia = 6f,   alcance = 8f,   municionMax = 15, tiempoRecarga = 2.0f },
+        new DatosModeloArma { nombre = "ak47",   rutaFbx = "Assets/Modelos/ak/ak47.fbx",       escala = new Vector3(0.2f, 0.2f, 0.2f),       rotacionEuler = Vector3.zero,                 cadencia = 9.5f,  alcance = 7.5f, dispersion = 2.5f, municionMax = 20, tiempoRecarga = 1.8f, modo = ModoDisparo.Automatico },
+        new DatosModeloArma { nombre = "barret", rutaFbx = "Assets/Modelos/barret/barret.fbx", escala = new Vector3(0.208f, 0.208f, 0.208f), rotacionEuler = new Vector3(0f, 90f, -90f),   cadencia = 1.5f, alcance = 15f,  dispersion = 0.1f, municionMax = 5,  tiempoRecarga = 2.5f, modo = ModoDisparo.Semiautomatico },
+        new DatosModeloArma { nombre = "mac10",  rutaFbx = "Assets/Modelos/mac10/mac10.fbx",   escala = new Vector3(0.25f, 0.25f, 0.25f),    rotacionEuler = new Vector3(0f, 0f, 180f),    cadencia = 16f,   alcance = 4.0f, dispersion = 0.5f, municionMax = 15, tiempoRecarga = 1.3f, modo = ModoDisparo.Automatico },
+        new DatosModeloArma { nombre = "bereta", rutaFbx = "Assets/Modelos/bereta/bereta.fbx", escala = new Vector3(25f, 25f, 25f),          rotacionEuler = new Vector3(0f, 180f, 0f),    cadencia = 5f,    alcance = 5.5f, dispersion = 0.8f, municionMax = 12, tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico },
+        new DatosModeloArma { nombre = "raygun", rutaFbx = "Assets/Modelos/raygun/raygun.fbx", escala = new Vector3(0.15f, 0.15f, 0.15f),    rotacionEuler = new Vector3(0f, 180f, 0f),    cadencia = 20f,   alcance = 80f,  dispersion = 0.0f, municionMax = 10, tiempoRecarga = 2.0f, modo = ModoDisparo.RayoContinuo },
     };
 
     // Coordenadas exactas de los 6 spawnArma en ecenaCochera (locales a Poster_fondo)
@@ -164,8 +166,10 @@ public static class CrearSpawns
             SerializedObject soArma = new SerializedObject(armaComp);
             soArma.FindProperty("Cadencia").floatValue = datos.cadencia;
             soArma.FindProperty("Alcance").floatValue = datos.alcance;
+            soArma.FindProperty("Dispersion").floatValue = datos.dispersion;
             soArma.FindProperty("municionMaxima").intValue = datos.municionMax;
             soArma.FindProperty("tiempoRecarga").floatValue = datos.tiempoRecarga;
+            soArma.FindProperty("modoDisparo").enumValueIndex = (int)datos.modo;
             soArma.FindProperty("iniciarEnCaja").boolValue = true;
             soArma.FindProperty("soltarAlRomperCaja").boolValue = true;
             soArma.FindProperty("offsetAreaRecogida").vector3Value = Vector3.zero;

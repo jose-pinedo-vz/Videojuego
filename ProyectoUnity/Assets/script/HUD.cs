@@ -49,13 +49,37 @@ public class HUD : MonoBehaviour
 
         if (txt_municion != null)
         {
-            txt_municion.text = arma == null
-                ? "- / -"
-                : arma.EnCaja
-                    ? "Presiona V para romper"
-                    : arma.Recargando
-                        ? "Recargando..."
-                        : arma.MunicionActual + " / " + arma.MunicionMaxima;
+            if (arma == null)
+            {
+                txt_municion.text = "- / -";
+            }
+            else if (arma.EnCaja)
+            {
+                txt_municion.text = "Presiona V para romper";
+            }
+            else if (arma.Recargando)
+            {
+                txt_municion.text = "Recargando...";
+            }
+            else if (arma.Modo == ModoDisparo.RayoContinuo)
+            {
+                if (arma.CargandoRayo)
+                {
+                    txt_municion.text = $"Cargando: {arma.TiempoCargaActual:F1}s / {arma.TiempoCargaRequerido:F1}s";
+                }
+                else if (arma.DisparandoRayo)
+                {
+                    txt_municion.text = $"Disparando: {arma.DuracionBateriaActual:F1}s / {arma.DuracionBateriaMaxima:F1}s";
+                }
+                else
+                {
+                    txt_municion.text = $"Energía: {arma.DuracionBateriaActual:F1}s / {arma.DuracionBateriaMaxima:F1}s";
+                }
+            }
+            else
+            {
+                txt_municion.text = arma.MunicionActual + " / " + arma.MunicionMaxima;
+            }
         }
     }
 

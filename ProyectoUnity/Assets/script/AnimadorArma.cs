@@ -122,12 +122,19 @@ public class AnimadorArma : MonoBehaviour
 
         retroceso = retrocesoMaximo;
         EfectosDisparo.Disparo(arma, trazo.GetPosition(0), trazo.GetPosition(1), EsLocal());
-        EstilizarTrazo(trazo);
+        EstilizarTrazo(trazo, arma);
     }
 
     // el trazo es una linea fina: se hace mas gruesa en la boca y se afina hacia el final, como una estela de comic
-    private static void EstilizarTrazo(LineRenderer trazo)
+    private static void EstilizarTrazo(LineRenderer trazo, Arma arma)
     {
+        if (arma != null && arma.Modo == ModoDisparo.RayoContinuo)
+        {
+            trazo.widthMultiplier = arma.AnchoRayo;
+            trazo.widthCurve = AnimationCurve.Constant(0f, 1f, 1f);
+            return;
+        }
+
         trazo.widthMultiplier = 1f;
         trazo.widthCurve = new AnimationCurve(new Keyframe(0f, 0.09f), new Keyframe(0.15f, 0.05f), new Keyframe(1f, 0.012f));
     }

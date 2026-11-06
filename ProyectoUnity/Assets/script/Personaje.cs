@@ -108,10 +108,13 @@ public class Personaje : NetworkBehaviour
         }
         }
 
-        if (armaEquipada != null && Keyboard.current.vKey.wasPressedThisFrame) //Solo dispara si tiene arma equipada
+        if (armaEquipada != null && Keyboard.current != null)
         {
-            Debug.Log("Tecla V presionada, armaEquipada: " + armaEquipada.name);
-            armaEquipada.Disparar();
+            bool presionandoV = Keyboard.current.vKey.isPressed;
+            bool presionoV = Keyboard.current.vKey.wasPressedThisFrame;
+            bool soltoV = Keyboard.current.vKey.wasReleasedThisFrame;
+
+            armaEquipada.ProcesarEntradaDisparo(presionandoV, presionoV, soltoV);
         }
 
         if (armaEquipada != null && !armaEquipada.EnCaja && Keyboard.current.rKey.wasPressedThisFrame) //Recargar
@@ -343,6 +346,13 @@ public class Personaje : NetworkBehaviour
     public void MostrarDisparoRpc(Vector3 inicio, Vector3 fin)
     {
         if (armaEquipada != null) armaEquipada.MostrarDisparo(inicio, fin);
+    }
+
+    // Sincronizacion del rayo continuo (Raygun) para que los demas jugadores vean el haz activo
+    [Rpc(SendTo.NotMe)]
+    public void ActualizarEstadoRayoRpc(bool activo, Vector3 inicio, Vector3 fin, float ancho)
+    {
+        if (armaEquipada != null) armaEquipada.ActualizarRayoRemoto(activo, inicio, fin, ancho);
     }
 
     [Rpc(SendTo.Owner)]
