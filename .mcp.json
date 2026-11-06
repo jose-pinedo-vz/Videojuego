@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "blender": {
+      "type": "stdio",
+      "command": "/home/jose/.venvs/mcp/bin/mcp-for-blender",
+      "args": [],
+      "env": {}
+    },
+    "unity": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/mcp"
+    }
+  }
+}
