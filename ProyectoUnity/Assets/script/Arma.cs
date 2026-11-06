@@ -33,6 +33,12 @@ public class Arma : MonoBehaviour
     private GameObject cajaVisual;
     private static int ultimoFrameAccionC = -1;
 
+    // Caida al soltarse: gravedad simple + raycast al piso, igual en todos los clientes (no depende de red)
+    private bool cayendo = false;
+    private float velocidadCaida = 0f;
+    private const float GRAVEDAD_ARMA = 18f;
+    private const float DISTANCIA_MAX_CAIDA = 60f;
+
     [Header("Modo de Disparo")]
     [SerializeField] protected ModoDisparo modoDisparo = ModoDisparo.Semiautomatico;
 
@@ -424,6 +430,8 @@ public class Arma : MonoBehaviour
             }
         }
 
+        if (cayendo) ActualizarCaida();
+
         // Actualizar cooldown para evitar que se suelte inmediatamente
         if (tiempoRecogida > 0f)
         {
@@ -507,6 +515,7 @@ public class Arma : MonoBehaviour
         if (jugador == null || jugador.armaEquipada != null) return;
 
         ultimoFrameAccionC = Time.frameCount;
+        cayendo = false;
         Debug.Log("Arma recogida");
 
         transform.parent=mano;//Esto hace que el arma pase a ser hija de "la mano" pa que se ponga ahi pues
@@ -1036,6 +1045,56 @@ public class Arma : MonoBehaviour
 
         Collider col = GetComponent<Collider>();
         if (col != null) col.enabled = true;
+
+        IniciarCaida(); // cae hasta el piso en vez de quedar flotando
+    }
+
+    // Primer collider solido bajo el punto (ignora triggers, jugadores y otras armas)
+    private bool BuscarPiso(Vector3 origen, float distancia, out float yPiso)
+    {
+        yPiso = 0f;
+        RaycastHit[] hits = Physics.RaycastAll(origen, Vector3.down, distancia, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        float mejor = float.MaxValue; bool hay = false;
+        foreach (RaycastHit h in hits)
+        {
+            if (h.collider.GetComponentInParent<Personaje>() != null) continue;
+            if (h.collider.GetComponentInParent<Arma>() != null) continue;
+            if (h.distance < mejor) { mejor = h.distance; yPiso = h.point.y; hay = true; }
+        }
+        return hay;
+    }
+
+    private float MitadAltoVisual()
+    {
+        if (enCaja) return tamanoCaja.y * 0.5f;
+        Bounds b = ObtenerBoundsArma();
+        return b.size.sqrMagnitude > 0.00001f ? b.extents.y : 0.1f;
+    }
+
+    private void IniciarCaida()
+    {
+        velocidadCaida = 0f;
+        Vector3 centro = ObtenerCentroVisual();
+        // solo cae si hay piso debajo; si no, se queda donde esta (no se pierde en el vacio)
+        cayendo = BuscarPiso(centro + Vector3.up * 0.3f, DISTANCIA_MAX_CAIDA, out _);
+    }
+
+    private void ActualizarCaida()
+    {
+        if (jugadorQueLaEquipo != null || transform.parent != null) { cayendo = false; return; }
+        velocidadCaida += GRAVEDAD_ARMA * Time.deltaTime;
+        float paso = velocidadCaida * Time.deltaTime;
+        Vector3 centro = ObtenerCentroVisual();
+        float mitad = MitadAltoVisual();
+
+        if (BuscarPiso(centro + Vector3.up * 0.3f, DISTANCIA_MAX_CAIDA, out float yPiso))
+        {
+            float yFinal = yPiso + mitad;            // la base queda al ras del piso
+            float yNueva = centro.y - paso;
+            if (yNueva <= yFinal) { transform.position += Vector3.up * (yFinal - centro.y); cayendo = false; velocidadCaida = 0f; return; }
+            transform.position += Vector3.down * paso;
+        }
+        else cayendo = false;
     }
 
     // Suelta el arma voluntariamente con tecla C (sincronizado en red)

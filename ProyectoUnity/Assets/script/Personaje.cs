@@ -37,6 +37,9 @@ public class Personaje : NetworkBehaviour
     // al aparecer en un mapa se espera un momento a que sus colliders esten listos y se revisa que el spawn tenga piso
     private bool revisarSpawnPendiente = false;
     private float revisarSpawnEn = 0f;
+    private bool muriendo = false;
+    private const float DURACION_MUERTE = 1.1f; // segundos que dura el modelo hecho pedazos antes de reaparecer
+    private const int CUBOS_MUERTE = 22;       // cantidad de cubitos en que se rompe el modelo
     private const float DISTANCIA_CAIDA = 25f; // cuanto puede bajar del spawn antes de considerarse caido del mapa
 
     // bajas (kills) del jugador, solo el servidor las escribe y todos las leen para el marcador
@@ -83,6 +86,7 @@ public class Personaje : NetworkBehaviour
 
         if (IsSpawned && !IsOwner) return; // un objeto por equipo en red
         if (!GetComponentInChildren<Renderer>().enabled) return; // espera a que empeise la partida
+        if (muriendo) return; // en plena animacion de muerte no se mueve
 
 
 
@@ -326,7 +330,7 @@ public class Personaje : NetworkBehaviour
         Debug.Log("Auch, me dio: "+atacante);
         // se le avisa al servidor, que es quien cuenta la baja y manda a morir al duenio de este personaje
         if (atacante != null) atacante.ReportarImpactoRpc(NetworkObject);
-        else MorirDuenioRpc();
+        else MorirDuenioRpc(posicionInicial);
     }
 
     // lo llama el que disparo, se ejecuta en el servidor
@@ -338,7 +342,11 @@ public class Personaje : NetworkBehaviour
         if (victima == null || victima == this) return;
 
         bajas.Value++; //Se le da un punto al que lo mato
-        victima.MorirDuenioRpc();
+
+        // el servidor elige en que otro spawn reaparece la victima
+        GameManager gm = FindFirstObjectByType<GameManager>();
+        Vector3 destino = gm != null ? gm.SpawnAleatorio(victima.transform.position) : victima.posicionInicial;
+        victima.MorirDuenioRpc(destino);
     }
 
     // el trazo del disparo para que lo vean los demas jugadores
@@ -356,42 +364,114 @@ public class Personaje : NetworkBehaviour
     }
 
     [Rpc(SendTo.Owner)]
-    private void MorirDuenioRpc()
+    private void MorirDuenioRpc(Vector3 destino)
     {
-        morir(null);
+        if (muriendo) return;
+        StartCoroutine(MorirYReaparecer(destino));
+    }
+
+    // Solo para que los demas vean la animacion de desaparicion
+    [Rpc(SendTo.NotOwner)]
+    private void AnimarMuerteRpc()
+    {
+        StartCoroutine(AnimacionMuerte());
+    }
+
+    // El modelo se rompe en cubitos de colores que salen disparados, caen con fisica y se encogen; despues reaparece
+    private IEnumerator AnimacionMuerte()
+    {
+        Transform modelo = (animator != null && animator.transform != transform) ? animator.transform : transform;
+
+        // renderizadores del cuerpo (sin el arma ni efectos)
+        List<Renderer> cuerpo = new List<Renderer>();
+        List<Material> materiales = new List<Material>();
+        foreach (Renderer r in modelo.GetComponentsInChildren<Renderer>(false))
+        {
+            if (!(r is MeshRenderer) && !(r is SkinnedMeshRenderer)) continue;
+            if (r.GetComponentInParent<Arma>() != null) continue;
+            if (!r.enabled) continue;
+            cuerpo.Add(r);
+            foreach (Material m in r.sharedMaterials) if (m != null) materiales.Add(m);
+        }
+
+        Bounds area = new Bounds(transform.position + Vector3.up, Vector3.one * 0.5f);
+        bool primero = true;
+        foreach (Renderer r in cuerpo) { if (primero) { area = r.bounds; primero = false; } else area.Encapsulate(r.bounds); }
+
+        foreach (Renderer r in cuerpo) r.enabled = false; // el modelo desaparece y en su lugar quedan los cubos
+
+        List<GameObject> cubos = new List<GameObject>();
+        for (int i = 0; i < CUBOS_MUERTE; i++)
+        {
+            GameObject cubo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cubo.name = "CuboMuerte";
+            float lado = Random.Range(0.12f, 0.26f);
+            cubo.transform.localScale = Vector3.one * lado;
+            cubo.transform.position = new Vector3(
+                Random.Range(area.min.x, area.max.x),
+                Random.Range(area.min.y, area.max.y),
+                Mathf.Lerp(area.min.z, area.max.z, 0.5f) + Random.Range(-0.1f, 0.1f));
+            cubo.transform.rotation = Random.rotation;
+
+            MeshRenderer mr = cubo.GetComponent<MeshRenderer>();
+            if (materiales.Count > 0) mr.sharedMaterial = materiales[Random.Range(0, materiales.Count)];
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            Collider col = cubo.GetComponent<Collider>();
+            if (controlador != null) Physics.IgnoreCollision(col, controlador); // no empujan al jugador que muere
+
+            Rigidbody rb = cubo.AddComponent<Rigidbody>();
+            rb.mass = 0.2f;
+            Vector3 hacia = (cubo.transform.position - area.center);
+            hacia.z *= 0.2f; // se mantienen casi en el plano de juego
+            rb.linearVelocity = hacia.normalized * Random.Range(1.5f, 3.5f) + Vector3.up * Random.Range(2f, 4.5f);
+            rb.angularVelocity = Random.insideUnitSphere * 8f;
+            cubos.Add(cubo);
+        }
+
+        float t = 0f;
+        float inicioEncoger = DURACION_MUERTE * 0.6f;
+        while (t < DURACION_MUERTE)
+        {
+            t += Time.deltaTime;
+            if (t > inicioEncoger)
+            {
+                float k = Mathf.InverseLerp(inicioEncoger, DURACION_MUERTE, t);
+                foreach (GameObject c in cubos) if (c != null) c.transform.localScale = c.transform.localScale * (1f - k * 0.15f);
+            }
+            yield return null;
+        }
+        foreach (GameObject c in cubos) if (c != null) Destroy(c);
+
+        yield return new WaitForSeconds(0.25f); // sin cuerpo un momento antes de reaparecer
+        foreach (Renderer r in cuerpo) if (r != null) r.enabled = true;
+        modelo.localRotation = Quaternion.identity;
+    }
+
+    private IEnumerator MorirYReaparecer(Vector3 destino)
+    {
+        muriendo = true;
+        velocidadCaida = Vector3.zero;
+
+        // Soltar el arma justo donde muere, antes de desaparecer
+        if (armaEquipada != null) armaEquipada.SoltarVoluntariamente();
+        armaEquipada = null;
+
+        if (IsSpawned) AnimarMuerteRpc();
+        yield return AnimacionMuerte();
+
+        // reaparece en otro spawn
+        Quaternion rotacionSpawn = Quaternion.Euler(0f, direccionPersonaje > 0f ? 90f : -90f, 0f);
+        transform.rotation = rotacionSpawn;
+        Teletransportar(destino);
+        FijarSpawn(destino);
+        muriendo = false;
     }
 
     public virtual void morir(Personaje atacante)
     {
-        //atacante.muertes++;//Se le da un punto al que lo mato
-        //atacante.muertes++;
         if (atacante != null) atacante.muertes++;
-
-        // Soltar arma antes de teletransportarse para que no se vaya con el jugador
-        if (armaEquipada != null)
-        {
-            SoltarArmaServRpc(armaEquipada.gameObject.name);
-            armaEquipada = null;
-        }
-
-        controlador.enabled=false;//Se desactiva al personaje controller para que no haya broncas
-
-        transform.position=posicionInicial; //Se envia al personaje a su posicion de spawn
-        Quaternion rotacionSpawn = Quaternion.Euler(0f, direccionPersonaje > 0f ? 90f : -90f, 0f);
-        transform.rotation = rotacionSpawn;
-        var nt = GetComponent<Unity.Netcode.Components.NetworkTransform>();
-        if (nt != null) nt.Teleport(posicionInicial, rotacionSpawn, transform.localScale);
-
-        velocidadCaida=Vector3.zero; //Para que no haya problemas raros con la velocidad de caida
-        controlador.enabled=true;
-    }
-
-    // El dueño le avisa al servidor qué arma soltar, el servidor llama a GestorArmas
-    [Rpc(SendTo.Server)]
-    private void SoltarArmaServRpc(string nombreArma)
-    {
-        GestorArmas ga = GestorArmas.Instancia;
-        if (ga != null) ga.SoltarArma(nombreArma);
+        if (!muriendo) StartCoroutine(MorirYReaparecer(posicionInicial));
     }
     // Si el jugador cae fuera del mapa vuelve al ultimo suelo que pisó
     private void RecuperarDeCaida()

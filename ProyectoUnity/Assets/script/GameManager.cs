@@ -89,15 +89,53 @@ public class GameManager : NetworkBehaviour
         return indiceMapa < mapas.Count ? mapas[indiceMapa] : null;
     }
 
+    // Todos los spawns del mapa en el mismo plano Z (el del que mas se repite), asi uno mal colocado
+    // en la escena (ej. spawn2 del patio en z=19) no deja al jugador fuera del alcance de cajas y disparos
+    private List<Vector3> TodosLosSpawns()
+    {
+        List<Vector3> posiciones = new List<Vector3>();
+        foreach (Transform punto in BuscarPuntos(MapaActual(), PREFIJO_JUGADOR))
+        {
+            posiciones.Add(punto.position);
+        }
+        if (posiciones.Count == 0) return posiciones;
+
+        List<float> zs = new List<float>();
+        foreach (Vector3 v in posiciones) zs.Add(v.z);
+        zs.Sort();
+        float planoZ = zs[zs.Count / 2]; // mediana
+
+        for (int i = 0; i < posiciones.Count; i++)
+        {
+            posiciones[i] = new Vector3(posiciones[i].x, posiciones[i].y, planoZ);
+        }
+        return posiciones;
+    }
+
+    // Spawn al azar para reaparecer tras morir, evita el mas cercano al lugar de la muerte
+    public Vector3 SpawnAleatorio(Vector3 evitar)
+    {
+        List<Vector3> todos = TodosLosSpawns();
+        if (todos.Count == 0) return Vector3.zero;
+
+        if (todos.Count > 1)
+        {
+            int cercano = 0;
+            for (int i = 1; i < todos.Count; i++)
+            {
+                if ((todos[i] - evitar).sqrMagnitude < (todos[cercano] - evitar).sqrMagnitude) cercano = i;
+            }
+            todos.RemoveAt(cercano);
+        }
+        return todos[Random.Range(0, todos.Count)];
+    }
+
     public Vector3 AsignarSpawn()
     {
         // Si ya se ocuparon todos (mas jugadores que spawns) se vuelven a repartir
         if (spawnsDisponibles.Count == 0)
         {
-            foreach (Transform punto in BuscarPuntos(MapaActual(), PREFIJO_JUGADOR))
-            {
-                spawnsDisponibles.Add(punto.position);
-            }
+            spawnsDisponibles.AddRange(TodosLosSpawns());
         }
 
         if (spawnsDisponibles.Count == 0)

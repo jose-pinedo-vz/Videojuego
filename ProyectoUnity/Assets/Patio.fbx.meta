@@ -3,7 +3,147 @@ guid: 973e89e3b37a1312ba4570b0ac7f1544
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Aguila_Marron
+    second: {fileID: 2100000, guid: 023ea8bd406f908d7a04c2e9f5bc6023, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Arbusto
+    second: {fileID: 2100000, guid: 537b378beb54ddf54a7f78accc687e82, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Ave Azul
+    second: {fileID: 2100000, guid: 85dadcd34cb9750ad9f7eef342394467, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Barda
+    second: {fileID: 2100000, guid: 249da12f90bc1d94cb3cbc6927ccb724, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Cabeza_Crema
+    second: {fileID: 2100000, guid: 0c4446cf6aa7324a98edef105ec0573a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Cajas
+    second: {fileID: 2100000, guid: 3bee5217ba6edb9d5b933b37780caa43, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Concreto
+    second: {fileID: 2100000, guid: d13a6cefb1a392428aa4037dc7f0c71a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Escalera
+    second: {fileID: 2100000, guid: 18dfbc73e01010c6cb8b93b0c93ecd35, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Metal
+    second: {fileID: 2100000, guid: 5a3b97a51033bf70383725feeaf983b1, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Ojo_Aguila
+    second: {fileID: 2100000, guid: 7d5db6c62828f4d17949a57ea42ce3a7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Ojos Negros
+    second: {fileID: 2100000, guid: 11e21ccc46fb86f8db7bc7d456e1917f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Paredes
+    second: {fileID: 2100000, guid: cde6edca0ec827617a94ac664be1e1f3, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Pecho Blanco
+    second: {fileID: 2100000, guid: b80c10a1d9ea1a6f28cdd3cf009e8bdd, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Pico Naranja
+    second: {fileID: 2100000, guid: 3dac9356cc6c82f98b3ec1b37f6381b8, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Pico_Dorado
+    second: {fileID: 2100000, guid: 9ee422e74f2689b9fab958ceaa74d0c9, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Piedra
+    second: {fileID: 2100000, guid: b75e203ab75bfdbc891713597ef8948f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Piso
+    second: {fileID: 2100000, guid: 8b58cc58adad23237b55fa354a833878, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Plumas Azul Claro
+    second: {fileID: 2100000, guid: dfbd0612542206850a7d16f37e6fb1e2, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Plumas Azul Oscuro
+    second: {fileID: 2100000, guid: ff0bd4965577c8e2baadbab903d02cd0, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Plumas_Oscuras
+    second: {fileID: 2100000, guid: 9dfd856b8d73035d985adaaa4bee6cbe, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Sombrilla
+    second: {fileID: 2100000, guid: df9de681ba0c347aaabfdbca5a1071a1, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: azul
+    second: {fileID: 2100000, guid: 13f42ee02b3076c9ba2d5960ac5fc1a9, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: hojas_Arbol
+    second: {fileID: 2100000, guid: 4fd84d83a36462c3dac1c56bfb3b7cd1, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: madera
+    second: {fileID: 2100000, guid: 765a14fc4caf8adaf8ccdfa0515e8a6e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: madera.001
+    second: {fileID: 2100000, guid: 2f739741cfbd94dabb535175e6e1b87f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: nubes
+    second: {fileID: 2100000, guid: fee5cf932fc89a2fe89d8b4c138708ee, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: pared
+    second: {fileID: 2100000, guid: 9cc9614027801926aa82de1fedb05dd7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: tubos
+    second: {fileID: 2100000, guid: 228232ac8113ed6b3a57120d5561c656, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
