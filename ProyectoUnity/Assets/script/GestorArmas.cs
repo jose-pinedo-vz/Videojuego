@@ -37,11 +37,11 @@ public class GestorArmas : NetworkBehaviour
 
     private static readonly ConfigModeloArma[] CONFIG_MODELOS = new ConfigModeloArma[]
     {
-        new ConfigModeloArma { nombre = "ak47",   rutaFbx = "Assets/Modelos/ak/ak47.fbx",       escala = new Vector3(0.2f, 0.2f, 0.2f),       rotacionEuler = Vector3.zero,               cadencia = 9.5f,  alcance = 7.5f, dispersion = 2.5f, municionMax = 20, tiempoRecarga = 1.8f, modo = ModoDisparo.Automatico },
-        new ConfigModeloArma { nombre = "barret", rutaFbx = "Assets/Modelos/barret/barret.fbx", escala = new Vector3(0.208f, 0.208f, 0.208f), rotacionEuler = new Vector3(0f, 90f, -90f), cadencia = 1.5f, alcance = 15f,  dispersion = 0.1f, municionMax = 5,  tiempoRecarga = 2.5f, modo = ModoDisparo.Semiautomatico },
-        new ConfigModeloArma { nombre = "mac10",  rutaFbx = "Assets/Modelos/mac10/mac10.fbx",   escala = new Vector3(0.25f, 0.25f, 0.25f),    rotacionEuler = new Vector3(0f, 0f, 180f),  cadencia = 16f,   alcance = 4.0f, dispersion = 0.5f, municionMax = 15, tiempoRecarga = 1.3f, modo = ModoDisparo.Automatico },
-        new ConfigModeloArma { nombre = "bereta", rutaFbx = "Assets/Modelos/bereta/bereta.fbx", escala = new Vector3(25f, 25f, 25f),          rotacionEuler = new Vector3(0f, 180f, 0f),  cadencia = 5f,    alcance = 5.5f, dispersion = 0.8f, municionMax = 12, tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico },
-        new ConfigModeloArma { nombre = "raygun", rutaFbx = "Assets/Modelos/raygun/raygun.fbx", escala = new Vector3(0.15f, 0.15f, 0.15f),    rotacionEuler = new Vector3(0f, 180f, 0f),  cadencia = 20f,   alcance = 80f,  dispersion = 0.0f, municionMax = 10, tiempoRecarga = 2.0f, modo = ModoDisparo.RayoContinuo },
+        new ConfigModeloArma { nombre = "ak47",   rutaFbx = "Assets/Modelos/ak/ak47.fbx",       escala = new Vector3(0.20f, 0.20f, 0.20f),    rotacionEuler = Vector3.zero,                cadencia = 9.5f,  alcance = 7.5f, dispersion = 2.5f, municionMax = 20, tiempoRecarga = 1.8f, modo = ModoDisparo.Automatico },
+        new ConfigModeloArma { nombre = "barret", rutaFbx = "Assets/Modelos/barret/barret.fbx", escala = new Vector3(0.19f, 0.19f, 0.19f),    rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 1.5f,  alcance = 15f,  dispersion = 0.1f, municionMax = 5,  tiempoRecarga = 2.5f, modo = ModoDisparo.Semiautomatico },
+        new ConfigModeloArma { nombre = "mac10",  rutaFbx = "Assets/Modelos/mac10/mac10.fbx",   escala = new Vector3(0.115f, 0.115f, 0.115f), rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 16f,   alcance = 4.0f, dispersion = 0.5f, municionMax = 15, tiempoRecarga = 1.3f, modo = ModoDisparo.Automatico },
+        new ConfigModeloArma { nombre = "bereta", rutaFbx = "Assets/Modelos/bereta/bereta.fbx", escala = new Vector3(0.125f, 0.125f, 0.125f), rotacionEuler = new Vector3(0f, 180f, 0f),   cadencia = 5f,    alcance = 5.5f, dispersion = 0.8f, municionMax = 12, tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico },
+        new ConfigModeloArma { nombre = "raygun", rutaFbx = "Assets/Modelos/raygun/raygun.fbx", escala = new Vector3(0.046f, 0.046f, 0.046f), rotacionEuler = new Vector3(90f, 180f, 0f),  cadencia = 20f,   alcance = 80f,  dispersion = 0.0f, municionMax = 10, tiempoRecarga = 2.0f, modo = ModoDisparo.RayoContinuo },
     };
 
     private static readonly Vector3[] SPAWNS_COCHERA_POSTER = new Vector3[]
@@ -150,8 +150,11 @@ public class GestorArmas : NetworkBehaviour
             if (objArma != null)
             {
                 objArma.name = cfg.nombre;
-                objArma.transform.localScale = cfg.escala;
-                objArma.transform.rotation = Quaternion.Euler(cfg.rotacionEuler);
+                if (objArma.transform.parent == null)
+                {
+                    objArma.transform.localScale = cfg.escala;
+                    objArma.transform.rotation = Quaternion.Euler(cfg.rotacionEuler);
+                }
 
                 BoxCollider box = objArma.GetComponent<BoxCollider>();
                 if (box == null) box = objArma.AddComponent<BoxCollider>();
@@ -174,6 +177,7 @@ public class GestorArmas : NetworkBehaviour
                     scriptArma = objArma.AddComponent<Arma>();
                 }
                 scriptArma.ConfigurarDatosArma(cfg.cadencia, cfg.alcance, cfg.municionMax, cfg.tiempoRecarga, cfg.modo, cfg.dispersion);
+                scriptArma.RecalibrarModeloVisual();
             }
         }
     }

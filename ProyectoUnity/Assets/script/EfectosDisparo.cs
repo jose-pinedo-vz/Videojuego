@@ -236,6 +236,10 @@ public class EfectosDisparo : MonoBehaviour
 
     private static void Sonido(Arma arma, Vector3 posicion, Perfil perfil)
     {
+        // La Raygun reproduce su propio audio sincronizado de carga + disparo continuo
+        if (arma != null && arma.Modo == ModoDisparo.RayoContinuo && arma.TieneAudioPersonalizadoRayo)
+            return;
+
         string nombre = "disparo_" + (arma != null ? arma.name.ToLowerInvariant() : "ak47");
         if (!Sonidos.Existe(nombre)) nombre = "disparo_ak47";
         Sonidos.Reproducir(nombre, posicion, 0.9f);

@@ -27,11 +27,11 @@ public static class CrearSpawns
 
     private static readonly DatosModeloArma[] MODELOS_ARMAS = new DatosModeloArma[]
     {
-        new DatosModeloArma { nombre = "ak47",   rutaFbx = "Assets/Modelos/ak/ak47.fbx",       escala = new Vector3(0.2f, 0.2f, 0.2f),       rotacionEuler = Vector3.zero,                 cadencia = 9.5f,  alcance = 7.5f, dispersion = 2.5f, municionMax = 20, tiempoRecarga = 1.8f, modo = ModoDisparo.Automatico },
-        new DatosModeloArma { nombre = "barret", rutaFbx = "Assets/Modelos/barret/barret.fbx", escala = new Vector3(0.208f, 0.208f, 0.208f), rotacionEuler = new Vector3(0f, 90f, -90f),   cadencia = 1.5f, alcance = 15f,  dispersion = 0.1f, municionMax = 5,  tiempoRecarga = 2.5f, modo = ModoDisparo.Semiautomatico },
-        new DatosModeloArma { nombre = "mac10",  rutaFbx = "Assets/Modelos/mac10/mac10.fbx",   escala = new Vector3(0.25f, 0.25f, 0.25f),    rotacionEuler = new Vector3(0f, 0f, 180f),    cadencia = 16f,   alcance = 4.0f, dispersion = 0.5f, municionMax = 15, tiempoRecarga = 1.3f, modo = ModoDisparo.Automatico },
-        new DatosModeloArma { nombre = "bereta", rutaFbx = "Assets/Modelos/bereta/bereta.fbx", escala = new Vector3(25f, 25f, 25f),          rotacionEuler = new Vector3(0f, 180f, 0f),    cadencia = 5f,    alcance = 5.5f, dispersion = 0.8f, municionMax = 12, tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico },
-        new DatosModeloArma { nombre = "raygun", rutaFbx = "Assets/Modelos/raygun/raygun.fbx", escala = new Vector3(0.15f, 0.15f, 0.15f),    rotacionEuler = new Vector3(0f, 180f, 0f),    cadencia = 20f,   alcance = 80f,  dispersion = 0.0f, municionMax = 10, tiempoRecarga = 2.0f, modo = ModoDisparo.RayoContinuo },
+        new DatosModeloArma { nombre = "ak47",   rutaFbx = "Assets/Modelos/ak/ak47.fbx",       escala = new Vector3(0.20f, 0.20f, 0.20f),    rotacionEuler = Vector3.zero,                cadencia = 9.5f,  alcance = 7.5f, dispersion = 2.5f, municionMax = 20, tiempoRecarga = 1.8f, modo = ModoDisparo.Automatico },
+        new DatosModeloArma { nombre = "barret", rutaFbx = "Assets/Modelos/barret/barret.fbx", escala = new Vector3(0.19f, 0.19f, 0.19f),    rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 1.5f,  alcance = 15f,  dispersion = 0.1f, municionMax = 5,  tiempoRecarga = 2.5f, modo = ModoDisparo.Semiautomatico },
+        new DatosModeloArma { nombre = "mac10",  rutaFbx = "Assets/Modelos/mac10/mac10.fbx",   escala = new Vector3(0.115f, 0.115f, 0.115f), rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 16f,   alcance = 4.0f, dispersion = 0.5f, municionMax = 15, tiempoRecarga = 1.3f, modo = ModoDisparo.Automatico },
+        new DatosModeloArma { nombre = "bereta", rutaFbx = "Assets/Modelos/bereta/bereta.fbx", escala = new Vector3(0.125f, 0.125f, 0.125f), rotacionEuler = new Vector3(0f, 180f, 0f),   cadencia = 5f,    alcance = 5.5f, dispersion = 0.8f, municionMax = 12, tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico },
+        new DatosModeloArma { nombre = "raygun", rutaFbx = "Assets/Modelos/raygun/raygun.fbx", escala = new Vector3(0.046f, 0.046f, 0.046f), rotacionEuler = new Vector3(90f, 180f, 0f),  cadencia = 20f,   alcance = 80f,  dispersion = 0.0f, municionMax = 10, tiempoRecarga = 2.0f, modo = ModoDisparo.RayoContinuo },
     };
 
     // Coordenadas exactas de los 6 spawnArma en ecenaCochera (locales a Poster_fondo)
@@ -69,12 +69,33 @@ public static class CrearSpawns
         var escena = EditorSceneManager.GetActiveScene();
         if (!escena.IsValid() || !escena.isLoaded || escena.name != "Juego") return;
 
-        // Si la escena Juego recién restaurada de los compañeros aún no tiene GestorArmas, integrar todo y guardar
+        // Si la escena Juego aún no tiene GestorArmas, integrar todo y guardar
         if (Object.FindFirstObjectByType<GestorArmas>(FindObjectsInactive.Include) == null)
         {
             ConfigurarTodoParaProbarArmas();
             EditorSceneManager.SaveScene(escena);
             Debug.Log("Fusión automática de Juego.unity completada y guardada: 4 mapas de compañeros + spawns de armas + 5 armas + GestorArmas.");
+            return;
+        }
+
+        // Si alguna arma en Juego.unity conserva escalas/rotaciones antiguas (ej. bereta a 25), actualizarla automáticamente
+        bool requiereActualizarArmas = false;
+        for (int i = 0; i < MODELOS_ARMAS.Length; i++)
+        {
+            GameObject go = BuscarObjetoArmaEnEscena(MODELOS_ARMAS[i].nombre);
+            if (go != null && (Vector3.Distance(go.transform.localScale, MODELOS_ARMAS[i].escala) > 0.01f
+                || Quaternion.Angle(go.transform.rotation, Quaternion.Euler(MODELOS_ARMAS[i].rotacionEuler)) > 1f))
+            {
+                requiereActualizarArmas = true;
+                break;
+            }
+        }
+
+        if (requiereActualizarArmas)
+        {
+            PrepararArmasYGestor();
+            EditorSceneManager.SaveScene(escena);
+            Debug.Log("CrearSpawns: Escalas y rotaciones de las 5 armas actualizadas y guardadas en Juego.unity.");
         }
     }
 
