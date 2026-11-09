@@ -34,6 +34,11 @@ public class Personaje : NetworkBehaviour
     protected Vector3 posicionInicial;
     protected Vector3 ultimaPosicionSegura; // ultimo punto donde estuvo pisando suelo, para recuperarse de una caida
 
+    // Estados de empuje (Escudo Troyano) y resbalon (Cascara de Platano)
+    private Vector3 velocidadEmpuje;
+    private float tiempoFinResbalonPlatano;
+    public bool EstaResbalandoPlatano => Time.time < tiempoFinResbalonPlatano;
+
     // al aparecer en un mapa se espera un momento a que sus colliders esten listos y se revisa que el spawn tenga piso
     private bool revisarSpawnPendiente = false;
     private float revisarSpawnEn = 0f;
@@ -144,6 +149,16 @@ public class Personaje : NetworkBehaviour
             bool soltoV = Keyboard.current.vKey.wasReleasedThisFrame;
 
             armaEquipada.ProcesarEntradaDisparo(presionandoV, presionoV, soltoV);
+
+            // Entrada secundaria (tecla F o clic derecho, ej. para lanzar el machete)
+            if (armaEquipada != null)
+            {
+                bool presionoF = Keyboard.current.fKey.wasPressedThisFrame
+                    || (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame);
+                bool presionandoF = Keyboard.current.fKey.isPressed
+                    || (Mouse.current != null && Mouse.current.rightButton.isPressed);
+                armaEquipada.ProcesarEntradaSecundaria(presionoF, presionandoF);
+            }
         }
 
         if (armaEquipada != null && !armaEquipada.EnCaja && Keyboard.current.rKey.wasPressedThisFrame) //Recargar
@@ -175,6 +190,13 @@ public class Personaje : NetworkBehaviour
     //TERMINADO MOVER
     protected virtual void Mover()
     {
+        // Impulso de retroceso cuando es golpeado por un Escudo Troyano
+        if (velocidadEmpuje.sqrMagnitude > 0.001f)
+        {
+            controlador.Move(new Vector3(velocidadEmpuje.x, 0f, 0f) * Time.deltaTime);
+            velocidadEmpuje = Vector3.MoveTowards(velocidadEmpuje, Vector3.zero, 28f * Time.deltaTime);
+        }
+
         if (estaDeslizando) return;
         
         float movimiento = 0f;
@@ -201,10 +223,11 @@ public class Personaje : NetworkBehaviour
         // estaCorriendo: se mueve horizontalmente sin deslizarse
         animCorriendo.Value = (movimiento != 0f) && !estaDeslizando;
 
+        bool resbalandoPlatano = EstaResbalandoPlatano;
         bool shiftPresionado = Keyboard.current.leftShiftKey.isPressed; //Si se mantiene presionao
         bool shiftRecienPresionado = Keyboard.current.leftShiftKey.wasPressedThisFrame; //Si solo lo presiono una vez
         
-        if (shiftRecienPresionado && !estaAgachado) //Si presiono shift y no esta agachado
+        if (shiftRecienPresionado && !estaAgachado && !resbalandoPlatano) //Si presiono shift y no esta agachado ni resbalando
         {
             if (movimiento != 0f) //Y no estaba quieto
             {
@@ -222,9 +245,24 @@ public class Personaje : NetworkBehaviour
             Agachar(false);
         }
 
-        Vector3 direccion=new Vector3(movimiento,0f,0f); //Transforma el valor del movimiento (1 o -1) en un valor vectorial para que se mueva en esa direccion
+        Vector3 direccion = new Vector3(movimiento, 0f, 0f); //Transforma el valor del movimiento (1 o -1) en un valor vectorial para que se mueva en esa direccion
         float velocidadActual = estaAgachado ? velicidadAgachado : velocidad; // agachado camina mas lento
-        controlador.Move(direccion*velocidadActual*Time.deltaTime); //Esta es la instruccion para que se mueva, hacia la direccion dada, con la velocidad dada y en cierto numero de frames
+
+        // Ralentizacion por portar arma pesada (ej. Francotirador Antitanques)
+        if (armaEquipada != null && !armaEquipada.EnCaja)
+        {
+            velocidadActual *= (1f - armaEquipada.FactorRalentizacion);
+        }
+
+        // Si piso una cascara de platano, no se puede mover bien durante unos segundos
+        if (resbalandoPlatano)
+        {
+            velocidadActual *= 0.22f;
+            float tambaleo = Mathf.Sin(Time.time * 18f) * 0.28f;
+            direccion.x += tambaleo;
+        }
+
+        controlador.Move(direccion * velocidadActual * Time.deltaTime); //Esta es la instruccion para que se mueva, hacia la direccion dada, con la velocidad dada y en cierto numero de frames
 
     }
     //TERMINADO GRAVEDAD
@@ -350,12 +388,76 @@ public class Personaje : NetworkBehaviour
 
 
 //=============================================================================FUNCIONES DE MUERTE Y REGENERACIÓN==================================================
+    /// <summary>
+    /// Procesa un impacto de disparo o ataque considerando:
+    /// 1) Si el personaje porta un Escudo Troyano que cubre la zona golpeada.
+    /// 2) Si el personaje porta Barrenos activos (explotan al recibir un disparo).
+    /// </summary>
+    public virtual void RecibirImpactoDeDisparo(Personaje atacante, Vector3 puntoImpacto, Vector3 direccionDisparo)
+    {
+        if (muriendo) return;
+
+        // 1. Verificar bloqueo del Escudo Troyano
+        if (armaEquipada is ArmaEscudo escudo && escudo.BloqueaImpacto(puntoImpacto, direccionDisparo))
+        {
+            Debug.Log($"[Escudo] Impacto bloqueado en {name}");
+            return;
+        }
+
+        // 2. Verificar si porta Barrenos (si alguien le dispara al portador con los barrenos, este explotara)
+        if (armaEquipada is ArmaBarreno barreno && barreno.PuedeExplotarAlRecibirDisparo())
+        {
+            Debug.Log($"[Barreno] {name} recibio disparo portando barrenos -> ¡Detonacion inmediata!");
+            barreno.DetonarEnPortador(atacante);
+            return;
+        }
+
+        RecibirDaño(atacante);
+    }
+
     public virtual void RecibirDaño(Personaje atacante)
     {
+        if (muriendo) return;
         Debug.Log("Auch, me dio: "+atacante);
+
+        // Si tambien tenia barrenos al recibir daño directo, detonar
+        if (armaEquipada is ArmaBarreno barreno && barreno.PuedeExplotarAlRecibirDisparo())
+        {
+            barreno.DetonarEnPortador(atacante);
+            return;
+        }
+
+        if (!IsSpawned)
+        {
+            StartCoroutine(MorirYReaparecer(posicionInicial));
+            return;
+        }
+
         // se le avisa al servidor, que es quien cuenta la baja y manda a morir al duenio de este personaje
         if (atacante != null) atacante.ReportarImpactoRpc(NetworkObject);
         else MorirDuenioRpc(posicionInicial);
+    }
+
+    /// <summary>
+    /// Daño de explosion (ej. Barreno), capaz de matar tanto a enemigos como al propio portador.
+    /// </summary>
+    public virtual void RecibirDañoExplosion(Personaje atacante)
+    {
+        if (muriendo) return;
+        if (!IsSpawned)
+        {
+            StartCoroutine(MorirYReaparecer(posicionInicial));
+            return;
+        }
+
+        if (atacante != null && atacante.IsSpawned)
+        {
+            atacante.ReportarImpactoExplosionRpc(NetworkObject);
+        }
+        else
+        {
+            MorirDuenioRpc(posicionInicial);
+        }
     }
 
     // lo llama el que disparo, se ejecuta en el servidor
@@ -372,6 +474,108 @@ public class Personaje : NetworkBehaviour
         GameManager gm = FindFirstObjectByType<GameManager>();
         Vector3 destino = gm != null ? gm.SpawnAleatorio(victima.transform.position) : victima.posicionInicial;
         victima.MorirDuenioRpc(destino);
+    }
+
+    [Rpc(SendTo.Server)]
+    private void ReportarImpactoExplosionRpc(NetworkObjectReference referenciaVictima)
+    {
+        if (!referenciaVictima.TryGet(out NetworkObject objetoVictima)) return;
+        Personaje victima = objetoVictima.GetComponent<Personaje>();
+        if (victima == null) return;
+
+        if (victima != this)
+        {
+            bajas.Value++;
+        }
+
+        GameManager gm = FindFirstObjectByType<GameManager>();
+        Vector3 destino = gm != null ? gm.SpawnAleatorio(victima.transform.position) : victima.posicionInicial;
+        victima.MorirDuenioRpc(destino);
+    }
+
+    public void RecibirEmpujeEscudo(Vector3 impulso)
+    {
+        if (!IsSpawned || IsOwner)
+        {
+            AplicarEmpujeLocal(impulso);
+        }
+        else
+        {
+            AplicarEmpujeOwnerRpc(impulso);
+        }
+    }
+
+    [Rpc(SendTo.Owner)]
+    private void AplicarEmpujeOwnerRpc(Vector3 impulso)
+    {
+        AplicarEmpujeLocal(impulso);
+    }
+
+    private void AplicarEmpujeLocal(Vector3 impulso)
+    {
+        velocidadEmpuje = new Vector3(impulso.x, 0f, 0f);
+        if (impulso.y > 0f)
+        {
+            velocidadCaida.y = Mathf.Max(velocidadCaida.y, impulso.y);
+        }
+    }
+
+    public void RecibirResbalonPlatano(float duracion)
+    {
+        if (!IsSpawned || IsOwner)
+        {
+            tiempoFinResbalonPlatano = Mathf.Max(tiempoFinResbalonPlatano, Time.time + duracion);
+        }
+        else
+        {
+            AplicarResbalonPlatanoOwnerRpc(duracion);
+        }
+    }
+
+    [Rpc(SendTo.Owner)]
+    private void AplicarResbalonPlatanoOwnerRpc(float duracion)
+    {
+        tiempoFinResbalonPlatano = Mathf.Max(tiempoFinResbalonPlatano, Time.time + duracion);
+    }
+
+    [Rpc(SendTo.Everyone)]
+    public void LanzarMacheteRpc(string nombreArma, Vector3 origen, float dirX)
+    {
+        if (GestorArmas.Instancia == null) return;
+        Arma a = GestorArmas.Instancia.BuscarArma(nombreArma);
+        if (a is ArmaMachete machete)
+        {
+            bool autoritativo = !IsSpawned || IsOwner;
+            machete.EjecutarVueloMachete(this, origen, dirX, autoritativo);
+        }
+    }
+
+    [Rpc(SendTo.Everyone)]
+    public void LanzarBarrenoRpc(Vector3 origen, Vector3 velocidadInicial)
+    {
+        bool autoritativo = !IsSpawned || IsOwner;
+        ArmaBarreno.InstanciarBarrenoLanzado(this, origen, velocidadInicial, autoritativo);
+    }
+
+    [Rpc(SendTo.NotMe)]
+    public void DetonarBarrenoEnPosicionRpc(Vector3 centro, float radio)
+    {
+        ArmaBarreno.EjecutarExplosionArea(centro, radio, this, false);
+    }
+
+    [Rpc(SendTo.Everyone)]
+    public void LanzarCascaraPlatanoRpc(Vector3 origen, Vector3 velocidadInicial, float duracionResbalon)
+    {
+        ArmaPlatanos.InstanciarCascaraEnEscena(this, origen, velocidadInicial, duracionResbalon);
+    }
+
+    [Rpc(SendTo.NotMe)]
+    public void ActualizarEscudoEmpunadoRpc(bool empunado)
+    {
+        if (armaEquipada is ArmaEscudo escudo)
+        {
+            escudo.EstablecerEmpunadoRemoto(empunado);
+        }
     }
 
     // el trazo del disparo para que lo vean los demas jugadores

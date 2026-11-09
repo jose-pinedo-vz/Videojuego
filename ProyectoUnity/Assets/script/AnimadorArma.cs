@@ -34,6 +34,7 @@ public class AnimadorArma : MonoBehaviour
 
     private LineRenderer trazoArma;
     private bool trazoAnterior;
+    private int contadorDisparosAnterior;
 
     // para detectar recoger, romper la caja y recargar
     private Arma armaAnterior;
@@ -126,7 +127,18 @@ public class AnimadorArma : MonoBehaviour
         LineRenderer trazo = apuntando ? arma.GetComponent<LineRenderer>() : null;
         if (trazo != trazoArma) { trazoArma = trazo; trazoAnterior = trazo != null && trazo.enabled; }
         bool disparando = trazoArma != null && trazoArma.enabled;
-        if (disparando && !trazoAnterior) AlDisparar(arma, trazoArma);
+        if (apuntando && arma != null)
+        {
+            if (arma.ContadorDisparos != contadorDisparosAnterior)
+            {
+                contadorDisparosAnterior = arma.ContadorDisparos;
+                AlDisparar(arma, trazoArma);
+            }
+            else if (arma.Modo == ModoDisparo.RayoContinuo && disparando && !trazoAnterior)
+            {
+                AlDisparar(arma, trazoArma);
+            }
+        }
         trazoAnterior = disparando;
     }
 
@@ -141,6 +153,7 @@ public class AnimadorArma : MonoBehaviour
             armaAnterior = arma;
             enCajaAnterior = arma != null && arma.EnCaja;
             recargandoAnterior = arma != null && arma.Recargando;
+            contadorDisparosAnterior = arma != null ? arma.ContadorDisparos : 0;
             retroceso = 0f;
             retrocesoMaximo = arma != null ? EfectosDisparo.PerfilDe(arma.name).retroceso : 0.07f;
         }
@@ -152,7 +165,7 @@ public class AnimadorArma : MonoBehaviour
         if (!recargandoAnterior && arma.Recargando) Sonidos.Reproducir("recarga", pos, 0.8f);
         recargandoAnterior = arma.Recargando;
 
-        if (EsLocal() && !arma.EnCaja && !arma.Recargando && arma.MunicionActual <= 0
+        if (EsLocal() && !arma.EnCaja && !arma.Recargando && arma.MunicionMaxima > 0 && arma.MunicionActual <= 0
             && Keyboard.current != null && Keyboard.current.vKey.wasPressedThisFrame)
         {
             Sonidos.Reproducir("sin_municion", pos, 0.8f);
@@ -164,8 +177,21 @@ public class AnimadorArma : MonoBehaviour
         animator.SetTrigger("Disparar");
 
         retroceso = retrocesoMaximo;
-        EfectosDisparo.Disparo(arma, trazo.GetPosition(0), trazo.GetPosition(1), EsLocal());
-        EstilizarTrazo(trazo, arma);
+        Vector3 inicio = arma.UltimoInicioTrazo;
+        Vector3 fin = arma.UltimoFinTrazo;
+        if (trazo != null && trazo.positionCount >= 2 && (inicio == Vector3.zero && fin == Vector3.zero))
+        {
+            inicio = trazo.GetPosition(0);
+            fin = trazo.GetPosition(1);
+        }
+        else if (inicio == Vector3.zero && fin == Vector3.zero)
+        {
+            inicio = arma.transform.position;
+            fin = inicio + Vector3.right * (personaje != null ? personaje.DireccionHorizontal : 1f);
+        }
+        EfectosDisparo.Disparo(arma, inicio, fin, EsLocal());
+        if (trazo != null)
+            EstilizarTrazo(trazo, arma);
     }
 
     // el trazo es una linea fina: se hace mas gruesa en la boca y se afina hacia el final, como una estela de comic

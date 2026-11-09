@@ -315,6 +315,22 @@ public class GameManager : NetworkBehaviour
         if (ga != null) ga.AplicarEstadoArmaRemoto(nombreArma, posicion, activar, enCaja);
     }
 
+    [Rpc(SendTo.Server)]
+    public void SolicitarConsumoCajaMunicionServerRpc(int indiceCaja)
+    {
+        GestorArmas ga = GestorArmas.Instancia;
+        if (ga == null) ga = gameObject.AddComponent<GestorArmas>();
+        if (ga != null) ga.ProcesarConsumoCajaMunicionServidor(indiceCaja);
+    }
+
+    [Rpc(SendTo.ClientsAndHost)]
+    public void SincronizarCajaMunicionClienteRpc(int indiceCaja, Vector3 posicion, bool disponible, int indiceSpawn)
+    {
+        GestorArmas ga = GestorArmas.Instancia;
+        if (ga == null) ga = gameObject.AddComponent<GestorArmas>();
+        if (ga != null) ga.AplicarEstadoCajaMunicionRemoto(indiceCaja, posicion, disponible, indiceSpawn);
+    }
+
     [Rpc(SendTo.ClientsAndHost)]
     public void iniciarClienteRpc(int indiceMapaElegido)
     {

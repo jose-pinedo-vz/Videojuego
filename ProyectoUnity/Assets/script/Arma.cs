@@ -19,17 +19,20 @@ public class Arma : MonoBehaviour
     [SerializeField] protected float Alcance=5.0f;
     [SerializeField] protected float Retroceso=0-2f;
     [SerializeField] protected float Dispersion=1.0f;
-    private bool jugadorCerca = false; //Esto dejas aber si el jugador esta tocando al arma
-    private Transform mano; //El objeto al que se pegara cuando el jugador lo agarre (debe ser invisible)
-    private float tiempoUltimoDisparo=0f;
-    private Personaje jugadorQueLaEquipo;
-    private LineRenderer trazo;
+    [SerializeField] protected int perdigonesPorDisparo = 1;
+    protected bool jugadorCerca = false; //Esto dejas aber si el jugador esta tocando al arma
+    protected Transform mano; //El objeto al que se pegara cuando el jugador lo agarre (debe ser invisible)
+    protected float tiempoUltimoDisparo=0f;
+    protected Personaje jugadorQueLaEquipo;
+    protected LineRenderer trazo;
+    private Coroutine corrutinaTrazo;
+    private readonly List<LineRenderer> trazosExtraEscopeta = new List<LineRenderer>();
     private float tiempoRecogida = 0f; // Para evitar que se suelte inmediatamente después de recoger
     private Quaternion rotacionInicial;
-    private Quaternion rotacionBaseIzquierda;
-    private MeshRenderer renderizadorArma;
-    private MeshRenderer[] renderizadoresArma;
-    private bool enCaja = false;
+    protected Quaternion rotacionBaseIzquierda;
+    protected MeshRenderer renderizadorArma;
+    protected MeshRenderer[] renderizadoresArma;
+    protected bool enCaja = false;
     private GameObject cajaVisual;
     private static int ultimoFrameAccionC = -1;
 
@@ -93,8 +96,9 @@ public class Arma : MonoBehaviour
     [Header("Municion")]
     [SerializeField] protected int municionMaxima = 10;
     [SerializeField] protected float tiempoRecarga = 1.5f;
-    private int municionActual;
-    private bool recargando = false;
+    protected int municionActual;
+    protected int cargadoresExtra = 0; // al salir de caja solo trae el cargador puesto; recargar requiere caja de municion
+    protected bool recargando = false;
 
     [Header("Area de recogida (trigger en el suelo)")]
     [Tooltip("Desplazamiento del centro del collider de recogida. Vector3.zero = no tocar el centro que ya tiene el collider en el editor")]
@@ -104,11 +108,31 @@ public class Arma : MonoBehaviour
 
     public int MunicionActual => modoDisparo == ModoDisparo.RayoContinuo ? Mathf.CeilToInt(duracionBateriaActual) : municionActual;
     public int MunicionMaxima => modoDisparo == ModoDisparo.RayoContinuo ? Mathf.CeilToInt(duracionBateriaMaxima) : municionMaxima;
+    public int CargadoresExtra => cargadoresExtra;
     public bool Recargando => recargando;
     public bool EnCaja => enCaja;
-    public string NombreMostrado => enCaja ? "Caja de madera" : (string.IsNullOrEmpty(nombreMostrado) ? gameObject.name : nombreMostrado);
+    public string NombreMostrado => enCaja ? "Caja de madera" : (!string.IsNullOrEmpty(nombreMostrado) ? nombreMostrado : FormatearNombreArma(gameObject.name));
+
+    private static string FormatearNombreArma(string n)
+    {
+        if (string.IsNullOrEmpty(n)) return "Arma";
+        string s = n.ToLowerInvariant();
+        if (s.Contains("ak47") || s == "ak") return "AK-47";
+        if (s.Contains("antitanque")) return "Francotirador Antitanques";
+        if (s.Contains("barret")) return "Barret .50";
+        if (s.Contains("mac10") || s.Contains("mac")) return "MAC-10";
+        if (s.Contains("beret")) return "Beretta";
+        if (s.Contains("raygun")) return "Raygun";
+        if (s.Contains("machete")) return "Machete";
+        if (s.Contains("barreno")) return "Paquete de Barrenos";
+        if (s.Contains("escudo")) return "Escudo Troyano";
+        if (s.Contains("platano") || s.Contains("penca")) return "Penca de Plátano";
+        if (s.Contains("escopeta")) return "Escopeta";
+        return n;
+    }
     public float TiempoRecogida => tiempoRecogida;
     public ModoDisparo Modo => modoDisparo;
+    public float FactorRalentizacion => (!enCaja && jugadorQueLaEquipo != null) ? Mathf.Clamp(Relantizacion, 0f, 0.85f) : 0f;
     public float AnchoRayo => anchoRayo;
     public float TiempoCargaActual => tiempoCargaActual;
     public float TiempoCargaRequerido => tiempoCargaRequerido;
@@ -117,13 +141,18 @@ public class Arma : MonoBehaviour
     public bool DisparandoRayo => disparandoRayo;
     public bool CargandoRayo => cargandoRayo;
     public bool TieneAudioPersonalizadoRayo => ObtenerClipRaygun() != null;
+    public int ContadorDisparos { get; protected set; }
+    public Vector3 UltimoInicioTrazo { get; protected set; } = Vector3.zero;
+    public Vector3 UltimoFinTrazo { get; protected set; } = Vector3.right;
 
     protected virtual void Awake()
     {
         municionActual = municionMaxima;
+        cargadoresExtra = 0;
         duracionBateriaActual = duracionBateriaMaxima;
         rotacionInicial = transform.rotation;
 
+        AsegurarMallaProceduralSiCorresponde();
         InicializarRenderizadoresArma();
         if (renderizadoresArma != null)
         {
@@ -137,8 +166,17 @@ public class Arma : MonoBehaviour
         ColocarEnCaja(iniciarEnCaja);
     }
 
+    protected virtual void AsegurarMallaProceduralSiCorresponde()
+    {
+        string n = gameObject.name.ToLowerInvariant();
+        if (n.Contains("machete")) ModelosProceduralesArmas.AsegurarMallaMachete(gameObject);
+        else if (n.Contains("platano") || n.Contains("penca")) ModelosProceduralesArmas.AsegurarMallaPencaPlatanos(gameObject);
+        else if (n.Contains("barreno")) ModelosProceduralesArmas.AsegurarPaqueteTresBarrenos(gameObject);
+    }
+
     public void RecalibrarModeloVisual()
     {
+        AsegurarMallaProceduralSiCorresponde();
         InicializarRenderizadoresArma();
         rotacionBaseIzquierda = CalcularRotacionBaseIzquierda();
         NormalizarEscalaArmaSiEsNecesario();
@@ -171,18 +209,21 @@ public class Arma : MonoBehaviour
 
     public void ConfigurarDatosArma(float cadencia, float alcance, int municionMax, float recarga)
     {
-        ConfigurarDatosArma(cadencia, alcance, municionMax, recarga, modoDisparo, Dispersion);
+        ConfigurarDatosArma(cadencia, alcance, municionMax, recarga, modoDisparo, Dispersion, Relantizacion, perdigonesPorDisparo);
     }
 
-    public void ConfigurarDatosArma(float cadencia, float alcance, int municionMax, float recarga, ModoDisparo modo, float dispersion)
+    public void ConfigurarDatosArma(float cadencia, float alcance, int municionMax, float recarga, ModoDisparo modo, float dispersion, float ralentizacion = 0f, int perdigones = 1)
     {
         Cadencia = cadencia;
         Alcance = alcance;
         municionMaxima = municionMax;
         municionActual = municionMax;
+        cargadoresExtra = 0;
         tiempoRecarga = recarga;
         modoDisparo = modo;
         Dispersion = dispersion;
+        Relantizacion = ralentizacion;
+        perdigonesPorDisparo = Mathf.Max(1, perdigones);
 
         if (modoDisparo == ModoDisparo.RayoContinuo)
         {
@@ -208,7 +249,7 @@ public class Arma : MonoBehaviour
             renderizadorArma = renderizadoresArma[0];
     }
 
-    private Bounds ObtenerBoundsArma()
+    protected Bounds ObtenerBoundsArma()
     {
         if (renderizadoresArma == null || renderizadoresArma.Length == 0)
             InicializarRenderizadoresArma();
@@ -297,8 +338,20 @@ public class Arma : MonoBehaviour
     private Quaternion CalcularRotacionBaseIzquierda()
     {
         string n = gameObject.name.ToLowerInvariant();
-        if (n.Contains("ak"))
+        if (n.Contains("ak") || n.Contains("machete") || n.Contains("platano") || n.Contains("penca"))
             return Quaternion.identity;
+
+        if (n.Contains("escudo"))
+            return Quaternion.Euler(0f, 90f, 90f);
+
+        if (n.Contains("barreno"))
+            return Quaternion.Euler(0f, 90f, 0f);
+
+        if (n.Contains("escopeta"))
+            return Quaternion.Euler(90f, 0f, 0f);
+
+        if (n.Contains("antitanq"))
+            return Quaternion.Euler(90f, 180f, 0f);
 
         MeshFilter mfRaiz = GetComponent<MeshFilter>();
         if (mfRaiz != null && mfRaiz.sharedMesh != null)
@@ -341,11 +394,17 @@ public class Arma : MonoBehaviour
     private float ObtenerLargoObjetivoMetros()
     {
         string n = gameObject.name.ToLowerInvariant();
-        if (n.Contains("ak"))     return 0.743f; // rifle de asalto (escala 0.20 del AK-47)
-        if (n.Contains("barret")) return 0.93f;  // rifle francotirador
-        if (n.Contains("mac"))    return 0.39f;  // subfusil compacto
-        if (n.Contains("bereta")) return 0.28f;  // pistola
-        if (n.Contains("raygun")) return 0.42f;  // arma de rayos
+        if (n.Contains("antitanq")) return 1.08f; // francotirador pesado antitanques
+        if (n.Contains("ak"))       return 0.743f; // rifle de asalto (escala 0.20 del AK-47)
+        if (n.Contains("barret"))   return 0.93f;  // rifle francotirador
+        if (n.Contains("escopeta")) return 0.80f;  // escopeta
+        if (n.Contains("escudo"))   return 0.78f;  // escudo troyano
+        if (n.Contains("machete"))  return 0.56f;  // machete
+        if (n.Contains("mac"))      return 0.39f;  // subfusil compacto
+        if (n.Contains("raygun"))   return 0.42f;  // arma de rayos
+        if (n.Contains("barreno"))  return 0.34f;  // paquete de barrenos
+        if (n.Contains("platano") || n.Contains("penca")) return 0.34f; // penca de plátanos
+        if (n.Contains("bereta"))   return 0.28f;  // pistola
         return 0.55f;
     }
 
@@ -438,6 +497,12 @@ public class Arma : MonoBehaviour
     {
         CrearCajaVisualSiNoExiste();
         enCaja = estado;
+        if (estado)
+        {
+            municionActual = municionMaxima;
+            cargadoresExtra = 0;
+            duracionBateriaActual = duracionBateriaMaxima;
+        }
 
         if (renderizadoresArma == null || renderizadoresArma.Length == 0)
         {
@@ -627,7 +692,7 @@ public class Arma : MonoBehaviour
         DetenerRayoContinuo();
     }
 
-    private void ActualizarRotacionEnMano()
+    protected virtual void ActualizarRotacionEnMano()
     {
         if (jugadorQueLaEquipo == null) return;
 
@@ -702,7 +767,11 @@ public class Arma : MonoBehaviour
         GetComponent<Collider>().enabled=false;//Desabilita OnTriggerExit y Enter para que no se la puedan robar (¿Seria interesante si se pudiera?)
         jugadorCerca = false; // con el collider apagado OnTriggerExit ya no se llama, si no se podra recoger otra vez
         recargando = false;
-        municionActual = municionMaxima; // el arma se recoge con el cargador lleno
+        if (enCaja)
+        {
+            municionActual = municionMaxima;
+            cargadoresExtra = 0;
+        }
         tiempoRecogida = 0.5f; // Cooldown de 0.5s para evitar que se suelte inmediatamente
         jugador.armaEquipada = this; //Le dice al personaje "esta es tu arma ahora"
         jugadorQueLaEquipo=jugador; //Para solucionar un problema que tomo 3 horas resolver...
@@ -715,7 +784,27 @@ public class Arma : MonoBehaviour
     // para que los demas jugadores vean el trazo de un disparo que no es suyo
     public void MostrarDisparo(Vector3 inicio, Vector3 fin)
     {
-        StartCoroutine(MostrarTrazo(inicio, fin));
+        ContadorDisparos++;
+        UltimoInicioTrazo = inicio;
+        UltimoFinTrazo = fin;
+        if (corrutinaTrazo != null) StopCoroutine(corrutinaTrazo);
+        corrutinaTrazo = StartCoroutine(MostrarTrazo(inicio, fin));
+
+        // Si es escopeta y llega un disparo remoto, dibujar tambien los perdigones visuales
+        if (perdigonesPorDisparo > 1)
+        {
+            float dist = Vector3.Distance(inicio, fin);
+            Vector3 dirBase = (fin - inicio).normalized;
+            int extras = perdigonesPorDisparo - 1;
+            for (int i = 0; i < extras; i++)
+            {
+                float offsetY = ((i - (extras - 1) * 0.5f) / Mathf.Max(1f, extras)) * Dispersion * 0.22f;
+                Vector3 dirPellet = new Vector3(dirBase.x, dirBase.y + offsetY, 0f).normalized;
+                Vector3 finPellet = inicio + dirPellet * dist;
+                finPellet.z = inicio.z;
+                StartCoroutine(MostrarTrazoExtraEscopeta(i, inicio, finPellet));
+            }
+        }
     }
 
     private IEnumerator MostrarTrazo(Vector3 inicio, Vector3 fin)
@@ -728,14 +817,61 @@ public class Arma : MonoBehaviour
         trazo.startWidth = 0.05f;
         trazo.endWidth = 0.05f;
         trazo.enabled = true;
-        float duracionTrazo = modoDisparo == ModoDisparo.Automatico ? Mathf.Clamp(0.7f / Cadencia, 0.025f, 0.08f) : 0.1f;
+        float duracionTrazo = modoDisparo == ModoDisparo.Automatico ? Mathf.Clamp(0.6f / Mathf.Max(1f, Cadencia), 0.025f, 0.075f) : 0.1f;
         yield return new WaitForSeconds(duracionTrazo);
         if (!disparandoRayo && !disparandoRayoRemoto)
             trazo.enabled = false;
     }
 
+    private LineRenderer ObtenerTrazoExtraEscopeta(int indice)
+    {
+        while (trazosExtraEscopeta.Count <= indice)
+        {
+            GameObject goTrazo = new GameObject($"TrazoPerdigon_{trazosExtraEscopeta.Count}");
+            goTrazo.transform.SetParent(transform, false);
+            LineRenderer lr = goTrazo.AddComponent<LineRenderer>();
+            if (trazo == null) trazo = GetComponent<LineRenderer>();
+            if (trazo != null && trazo.sharedMaterial != null)
+            {
+                lr.sharedMaterial = trazo.sharedMaterial;
+                lr.startColor = trazo.startColor;
+                lr.endColor = trazo.endColor;
+            }
+            else
+            {
+                Shader sh = Shader.Find("Sprites/Default");
+                if (sh != null) lr.material = new Material(sh);
+                lr.startColor = new Color(1f, 0.85f, 0.3f, 0.9f);
+                lr.endColor = new Color(1f, 0.55f, 0.1f, 0.3f);
+            }
+            lr.startWidth = 0.035f;
+            lr.endWidth = 0.025f;
+            lr.positionCount = 2;
+            lr.enabled = false;
+            trazosExtraEscopeta.Add(lr);
+        }
+        return trazosExtraEscopeta[indice];
+    }
+
+    private IEnumerator MostrarTrazoExtraEscopeta(int indice, Vector3 inicio, Vector3 fin)
+    {
+        LineRenderer lr = ObtenerTrazoExtraEscopeta(indice);
+        if (lr == null) yield break;
+        lr.positionCount = 2;
+        lr.SetPosition(0, inicio);
+        lr.SetPosition(1, fin);
+        lr.enabled = true;
+        yield return new WaitForSeconds(0.09f);
+        if (lr != null) lr.enabled = false;
+    }
+
+    // Entrada secundaria (tecla F o clic derecho, ej. lanzar machete)
+    public virtual void ProcesarEntradaSecundaria(bool presionoEsteFrame, bool presionando)
+    {
+    }
+
     // Procesa la entrada continua o por pulsos segun el modo del arma
-    public void ProcesarEntradaDisparo(bool presionando, bool presionoEsteFrame, bool soltoEsteFrame)
+    public virtual void ProcesarEntradaDisparo(bool presionando, bool presionoEsteFrame, bool soltoEsteFrame)
     {
         if (jugadorQueLaEquipo == null) return;
 
@@ -755,7 +891,15 @@ public class Arma : MonoBehaviour
         switch (modoDisparo)
         {
             case ModoDisparo.Semiautomatico:
-                if (presionoEsteFrame) Disparar();
+                if (presionoEsteFrame)
+                {
+                    if (municionActual <= 0 && municionMaxima > 0)
+                    {
+                        Sonidos.Reproducir("sin_municion", transform.position, 0.8f);
+                        return;
+                    }
+                    Disparar();
+                }
                 break;
 
             case ModoDisparo.Automatico:
@@ -889,7 +1033,7 @@ public class Arma : MonoBehaviour
                 if (!victimasAlcanzadas.Contains(victima))
                 {
                     victimasAlcanzadas.Add(victima);
-                    victima.RecibirDaño(jugadorQueLaEquipo);
+                    victima.RecibirImpactoDeDisparo(jugadorQueLaEquipo, hit.point, direccion);
                 }
             }
         }
@@ -1211,6 +1355,7 @@ public class Arma : MonoBehaviour
 
         tiempoUltimoDisparo = Time.time;
         municionActual--;
+        ContadorDisparos++;
 
         Debug.Log("jugadorQueLaEquipo: " + (jugadorQueLaEquipo != null ? jugadorQueLaEquipo.name : "null"));
         Debug.Log($"Arma Rot al disparar: {transform.rotation.eulerAngles}");
@@ -1219,13 +1364,6 @@ public class Arma : MonoBehaviour
         float dirX = jugadorQueLaEquipo != null
             ? jugadorQueLaEquipo.DireccionHorizontal
             : (transform.right.x >= 0f ? 1f : -1f);
-
-        Vector3 direccionDisparo = new Vector3(
-            dirX,
-            Random.Range(-Dispersion, Dispersion) * 0.1f,
-            0f
-        ).normalized;
-        Debug.Log("direccionDisparo: " + direccionDisparo);
 
         // Punto visual de salida en la boca del arma
         Vector3 inicioTrazo = transform.position;
@@ -1243,55 +1381,85 @@ public class Arma : MonoBehaviour
             origen.z = jugadorQueLaEquipo.transform.position.z;
         }
 
-        Debug.DrawRay(origen, direccionDisparo * Alcance, Color.red, 2f);
+        int numRayos = Mathf.Max(1, perdigonesPorDisparo);
+        HashSet<Personaje> golpeadosEnEsteDisparo = new HashSet<Personaje>();
+        Vector3 finTrazoPrincipal = inicioTrazo + new Vector3(dirX * Alcance, 0f, 0f);
 
-        // Ignoramos triggers, colliders que envuelven el origen (distancia ~0, como Cochera convexa) y al propio tirador
-        RaycastHit[] impactos = Physics.RaycastAll(origen, direccionDisparo, Alcance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-        RaycastHit? impactoValido = null;
-        float menorDistancia = float.MaxValue;
-
-        foreach (RaycastHit hit in impactos)
+        for (int i = 0; i < numRayos; i++)
         {
-            if (hit.distance <= 0.05f) continue;
-
-            if (jugadorQueLaEquipo != null &&
-                (hit.collider.transform.IsChildOf(jugadorQueLaEquipo.transform) ||
-                 hit.collider.GetComponentInParent<Personaje>() == jugadorQueLaEquipo))
+            float spreadY;
+            if (numRayos > 1)
             {
-                continue;
+                // Abanico amplio para la escopeta + ligera variacion aleatoria
+                float t = (i / (float)(numRayos - 1)) - 0.5f; // -0.5 .. +0.5
+                spreadY = (t * Dispersion * 0.24f) + Random.Range(-Dispersion, Dispersion) * 0.03f;
+            }
+            else
+            {
+                spreadY = Random.Range(-Dispersion, Dispersion) * 0.1f;
             }
 
-            if (hit.distance < menorDistancia)
+            Vector3 direccionDisparo = new Vector3(dirX, spreadY, 0f).normalized;
+            Debug.DrawRay(origen, direccionDisparo * Alcance, Color.red, 2f);
+
+            // Ignoramos triggers, colliders que envuelven el origen (distancia ~0, como Cochera convexa) y al propio tirador
+            RaycastHit[] impactos = Physics.RaycastAll(origen, direccionDisparo, Alcance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            RaycastHit? impactoValido = null;
+            float menorDistancia = float.MaxValue;
+
+            foreach (RaycastHit hit in impactos)
             {
-                menorDistancia = hit.distance;
-                impactoValido = hit;
+                if (hit.distance <= 0.05f) continue;
+
+                if (jugadorQueLaEquipo != null &&
+                    (hit.collider.transform.IsChildOf(jugadorQueLaEquipo.transform) ||
+                     hit.collider.GetComponentInParent<Personaje>() == jugadorQueLaEquipo))
+                {
+                    continue;
+                }
+
+                if (hit.distance < menorDistancia)
+                {
+                    menorDistancia = hit.distance;
+                    impactoValido = hit;
+                }
+            }
+
+            Vector3 puntoFinal = origen + direccionDisparo * Alcance;
+            if (impactoValido.HasValue)
+            {
+                RaycastHit impacto = impactoValido.Value;
+                puntoFinal = impacto.point;
+                Debug.Log("Le diste a: " + impacto.collider.name + " en la posicion: " + impacto.point);
+
+                Personaje personajeGolpeado = impacto.collider.GetComponentInParent<Personaje>();
+                if (personajeGolpeado != null && personajeGolpeado != jugadorQueLaEquipo && !golpeadosEnEsteDisparo.Contains(personajeGolpeado))
+                {
+                    golpeadosEnEsteDisparo.Add(personajeGolpeado);
+                    personajeGolpeado.RecibirImpactoDeDisparo(jugadorQueLaEquipo, impacto.point, direccionDisparo);
+                }
+            }
+
+            Vector3 finTrazo = new Vector3(puntoFinal.x, puntoFinal.y, inicioTrazo.z);
+            if (i == 0)
+            {
+                finTrazoPrincipal = finTrazo;
+            }
+            else
+            {
+                StartCoroutine(MostrarTrazoExtraEscopeta(i - 1, inicioTrazo, finTrazo));
             }
         }
 
-        Vector3 puntoFinal = origen + direccionDisparo * Alcance;
-        if (impactoValido.HasValue)
-        {
-            RaycastHit impacto = impactoValido.Value;
-            puntoFinal = impacto.point;
-            Debug.Log("Le diste a: " + impacto.collider.name + " en la posicion: " + impacto.point);
-
-            Personaje personajeGolpeado = impacto.collider.GetComponentInParent<Personaje>(); // por si el collider esta en un hijo
-            if (personajeGolpeado != null && personajeGolpeado != jugadorQueLaEquipo)
-            {
-                personajeGolpeado.RecibirDaño(jugadorQueLaEquipo);
-            }
-        }
-        else
-        {
-            Debug.Log("Fallaste");
-        }
-
-        // El trazo visual mantiene el plano Z de la boca del arma para salir totalmente horizontal (+X o -X)
-        Vector3 finTrazo = new Vector3(puntoFinal.x, puntoFinal.y, inicioTrazo.z);
-        StartCoroutine(MostrarTrazo(inicioTrazo, finTrazo));
+        // El trazo visual principal mantiene el plano Z de la boca del arma
+        UltimoInicioTrazo = inicioTrazo;
+        UltimoFinTrazo = finTrazoPrincipal;
+        if (corrutinaTrazo != null) StopCoroutine(corrutinaTrazo);
+        corrutinaTrazo = StartCoroutine(MostrarTrazo(inicioTrazo, finTrazoPrincipal));
         if (jugadorQueLaEquipo != null && jugadorQueLaEquipo.IsSpawned)
-            jugadorQueLaEquipo.MostrarDisparoRpc(inicioTrazo, finTrazo);
+            jugadorQueLaEquipo.MostrarDisparoRpc(inicioTrazo, finTrazoPrincipal);
     }
+
     public void AdjuntarA(Transform nuevaMano, Personaje jugador)
     {
         mano = nuevaMano;
@@ -1302,16 +1470,22 @@ public class Arma : MonoBehaviour
         jugadorQueLaEquipo = jugador;
         ActualizarRotacionEnMano();
         recargando = false;
-        municionActual = municionMaxima; // el arma se recoge con el cargador lleno
-        duracionBateriaActual = duracionBateriaMaxima;
+        if (enCaja)
+        {
+            municionActual = municionMaxima;
+            cargadoresExtra = 0;
+            duracionBateriaActual = duracionBateriaMaxima;
+        }
         tiempoCargaActual = 0f;
         DetenerRayoContinuo();
     }
 
-    // Se llama al presionar R. Si ya esta recargando o el cargador esta lleno, no hace nada
+    // Se llama al presionar R. Solo permite recargar si el jugador recogio una caja de municion (cargadoresExtra > 0)
     public void IniciarRecarga()
     {
         if (recargando) return;
+        if (municionMaxima <= 0) return; // Armas cuerpo a cuerpo / escudo no usan cargador
+
         if (modoDisparo == ModoDisparo.RayoContinuo)
         {
             if (duracionBateriaActual >= duracionBateriaMaxima) return;
@@ -1320,6 +1494,14 @@ public class Arma : MonoBehaviour
         {
             if (municionActual >= municionMaxima) return;
         }
+
+        if (cargadoresExtra <= 0)
+        {
+            Sonidos.Reproducir("sin_municion", transform.position, 0.85f);
+            Debug.Log("No tienes cargadores de reserva. Recoge una caja de municion.");
+            return;
+        }
+
         StartCoroutine(RecargarAhoraSi());
     }
 
@@ -1329,10 +1511,54 @@ public class Arma : MonoBehaviour
         if (disparandoRayo || cargandoRayo) DetenerRayoContinuo();
         Debug.Log("Recargando...");
         yield return new WaitForSeconds(tiempoRecarga);
+        if (cargadoresExtra > 0)
+            cargadoresExtra--;
         municionActual = municionMaxima;
         duracionBateriaActual = duracionBateriaMaxima;
         tiempoCargaActual = 0f;
         recargando = false;
+        AlCompletarRecarga();
+    }
+
+    protected virtual void AlCompletarRecarga()
+    {
+    }
+
+    /// <summary>
+    /// Otorga un cargador completo de municion para el arma actual al pasar sobre una CajaMunicion.
+    /// Devuelve true si la caja fue aprovechada por esta arma.
+    /// </summary>
+    public virtual bool RecargarConCajaMunicion()
+    {
+        if (enCaja) return false;
+        if (municionMaxima <= 0 && modoDisparo != ModoDisparo.RayoContinuo) return false; // Machete/Escudo no consumen municion
+
+        if (modoDisparo == ModoDisparo.RayoContinuo)
+        {
+            if (duracionBateriaActual < duracionBateriaMaxima)
+            {
+                duracionBateriaActual = duracionBateriaMaxima;
+            }
+            else
+            {
+                cargadoresExtra++;
+            }
+            return true;
+        }
+
+        // Si el arma estaba descargada o es un consumible directo (barreno/platanos), rellenar el cargador actual de inmediato;
+        // si ya tenia el cargador lleno, otorgar un cargador completo extra para recargar con R (o recargar directamente)
+        if (municionActual < municionMaxima)
+        {
+            municionActual = municionMaxima;
+            recargando = false;
+            AlCompletarRecarga();
+        }
+        else
+        {
+            cargadoresExtra++;
+        }
+        return true;
     }
 
     private void RomperCaja()
@@ -1378,7 +1604,7 @@ public class Arma : MonoBehaviour
 
     // Suelta el arma: la desancla del jugador y la coloca en posicion (el suelo)
     // Lo llama GestorArmas en todos los clientes cuando el jugador muere o suelta el arma
-    public void Soltar(Vector3 posicion)
+    public virtual void Soltar(Vector3 posicion)
     {
         // Limpiar referencia del jugador que la tenía
         if (jugadorQueLaEquipo != null)
@@ -1391,8 +1617,12 @@ public class Arma : MonoBehaviour
         jugadorCerca = false;
         StopAllCoroutines(); // cancela una recarga en curso, si la habia
         recargando = false;
-        municionActual = municionMaxima; // queda lista para el siguiente que la recoja
-        duracionBateriaActual = duracionBateriaMaxima;
+        if (enCaja)
+        {
+            municionActual = municionMaxima;
+            cargadoresExtra = 0;
+            duracionBateriaActual = duracionBateriaMaxima;
+        }
         tiempoCargaActual = 0f;
         DetenerRayoContinuo();
 
