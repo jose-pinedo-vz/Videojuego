@@ -20,6 +20,8 @@ public class AnimadorArma : MonoBehaviour
     private Transform huesoMano;
     private Transform modelo;
     private Vector3 escalaModelo;
+    private Quaternion rotacionModelo = Quaternion.identity;
+    private float inclinacionActual;   // grados que se echa hacia atras al disparar contra una pared
     private int capaArma = -1;
     private float pesoCapa;
 
@@ -53,7 +55,7 @@ public class AnimadorArma : MonoBehaviour
         if (mano != null) manoOriginal = mano.localPosition;
 
         modelo = BuscarModeloInicial();
-        if (modelo != null) escalaModelo = modelo.localScale;
+        if (modelo != null) { escalaModelo = modelo.localScale; rotacionModelo = modelo.localRotation; }
 
         RefrescarHuesosAnimator();
     }
@@ -75,7 +77,7 @@ public class AnimadorArma : MonoBehaviour
     public void ActualizarModeloPersonaje(Transform nuevoModelo)
     {
         modelo = nuevoModelo != null ? nuevoModelo : BuscarModeloInicial();
-        if (modelo != null) escalaModelo = modelo.localScale;
+        if (modelo != null) { escalaModelo = modelo.localScale; rotacionModelo = modelo.localRotation; inclinacionActual = 0f; }
         RefrescarHuesosAnimator();
     }
 
@@ -219,5 +221,12 @@ public class AnimadorArma : MonoBehaviour
         if (modelo == null) return;
         float k = retrocesoMaximo > 0.0001f ? Mathf.Clamp01(retroceso / retrocesoMaximo) : 0f;
         modelo.localScale = Vector3.Scale(escalaModelo, new Vector3(1f + 0.06f * k, 1f - 0.07f * k, 1f + 0.06f * k));
+
+        // pegado a la pared apuntando hacia arriba: el cuerpo se arquea un poco hacia atras, y al disparar se echa mas
+        Arma arma = personaje != null ? personaje.armaEquipada : null;
+        float apuntar = arma != null && !arma.EnCaja ? arma.PesoApuntarArriba : 0f;
+        float objetivo = apuntar * (-8f - 7f * k);
+        inclinacionActual = Mathf.Lerp(inclinacionActual, objetivo, 1f - Mathf.Exp(-14f * Time.deltaTime));
+        modelo.localRotation = rotacionModelo * Quaternion.Euler(inclinacionActual, 0f, 0f);
     }
 }

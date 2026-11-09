@@ -617,7 +617,9 @@ public class Arma : MonoBehaviour
         if (b.size.sqrMagnitude > 0.00001f && jugadorQueLaEquipo != null)
         {
             float dirX = jugadorQueLaEquipo.DireccionHorizontal;
-            boca = new Vector3(dirX > 0f ? b.max.x : b.min.x, b.center.y, jugadorQueLaEquipo.transform.position.z);
+            boca = PegadoAPared()
+                ? new Vector3(b.center.x, b.max.y, jugadorQueLaEquipo.transform.position.z)
+                : new Vector3(dirX > 0f ? b.max.x : b.min.x, b.center.y, jugadorQueLaEquipo.transform.position.z);
         }
         efectoKame.Actualizar(cargando, disparando, boca, trazo, anchoRayo);
     }
@@ -679,6 +681,35 @@ public class Arma : MonoBehaviour
         {
             ActualizarTransformCaja();
         }
+        else
+        {
+            AplicarApuntarArriba();
+        }
+    }
+
+    // Animacion al estar pegado a una pared: el arma se levanta suavemente hasta apuntar hacia arriba
+    private float pesoApuntarArriba;
+    private int ultimoFrameApuntarArriba = -1;
+    private const float AnguloApuntarArriba = 80f;
+    public float PesoApuntarArriba => pesoApuntarArriba;
+
+    private void AplicarApuntarArriba()
+    {
+        // el peso se actualiza una sola vez por cuadro (esta funcion se llama en Update y LateUpdate)
+        if (ultimoFrameApuntarArriba != Time.frameCount)
+        {
+            ultimoFrameApuntarArriba = Time.frameCount;
+            bool objetivo = jugadorQueLaEquipo != null && !recargando && PegadoAPared();
+            pesoApuntarArriba = Mathf.MoveTowards(pesoApuntarArriba, objetivo ? 1f : 0f, Time.deltaTime * 7f);
+        }
+        if (pesoApuntarArriba < 0.001f) return;
+
+        Bounds b = ObtenerBoundsArma();
+        Vector3 pivote = b.size.sqrMagnitude > 0.00001f ? b.center : transform.position;
+        // mirando a +X se gira +90 en Z; mirando a -X, -90, en ambos casos el canon termina hacia +Y
+        float signo = jugadorQueLaEquipo.DireccionHorizontal > 0f ? 1f : -1f;
+        float suave = Mathf.SmoothStep(0f, 1f, pesoApuntarArriba);
+        transform.RotateAround(pivote, Vector3.forward, signo * AnguloApuntarArriba * suave);
     }
     
     //TERMINADO
@@ -834,18 +865,56 @@ public class Arma : MonoBehaviour
         }
     }
 
+    // true cuando el tirador tiene pegado enfrente CUALQUIER objeto solido del mapa (pared, caja, mueble, columna...):
+    // en ese caso se dispara hacia arriba. Se lanzan varios rayos a distintas alturas del cuerpo
+    // (pies, rodillas, pecho y cabeza) para detectar tambien objetos bajos o que solo tapan una parte del cuerpo.
+    private static readonly float[] AlturasDeteccion = { 0.15f, 0.4f, 0.65f, 0.9f };
+
+    private bool PegadoAPared()
+    {
+        if (jugadorQueLaEquipo == null) return false;
+
+        Transform pj = jugadorQueLaEquipo.transform;
+        CharacterController cc = pj.GetComponent<CharacterController>();
+        float escala = Mathf.Max(pj.lossyScale.x, pj.lossyScale.z);
+        float radio = cc != null ? cc.radius * escala : 0.3f;
+        float alto = cc != null ? cc.height * pj.lossyScale.y : 1.8f;
+        Vector3 piso = cc != null ? pj.TransformPoint(cc.center) - Vector3.up * (alto / 2f) : pj.position;
+        Vector3 haciaFrente = new Vector3(jugadorQueLaEquipo.DireccionHorizontal, 0f, 0f);
+        float distancia = radio + 0.3f;
+
+        foreach (float fraccion in AlturasDeteccion)
+        {
+            Vector3 origen = piso + Vector3.up * (alto * fraccion);
+            RaycastHit[] hits = Physics.RaycastAll(origen, haciaFrente, distancia, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            foreach (RaycastHit hit in hits)
+            {
+                if (hit.distance <= 0.05f) continue; // colliders que envuelven el origen (como la cochera)
+                if (hit.collider.transform.IsChildOf(pj)) continue;
+                if (hit.collider.GetComponentInParent<Personaje>() != null) continue; // otros jugadores no cuentan
+                if (hit.collider.GetComponentInParent<Arma>() != null) continue;      // armas tiradas en el piso tampoco
+                if (hit.normal.y > 0.6f) continue; // rampa o piso inclinado, no es un obstaculo de frente
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void ActualizarFisicaYVisualRayo()
     {
         if (jugadorQueLaEquipo == null) return;
 
         float dirX = jugadorQueLaEquipo.DireccionHorizontal;
-        Vector3 direccion = new Vector3(dirX, 0f, 0f).normalized;
+        bool haciaArriba = PegadoAPared();
+        Vector3 direccion = haciaArriba ? Vector3.up : new Vector3(dirX, 0f, 0f).normalized;
 
         Vector3 inicioTrazo = transform.position;
         Bounds b = ObtenerBoundsArma();
         if (b.size.sqrMagnitude > 0.00001f)
         {
-            inicioTrazo = new Vector3(dirX > 0f ? b.max.x : b.min.x, b.center.y, b.center.z);
+            inicioTrazo = haciaArriba
+                ? new Vector3(b.center.x, b.max.y, b.center.z)
+                : new Vector3(dirX > 0f ? b.max.x : b.min.x, b.center.y, b.center.z);
         }
 
         Vector3 origen = inicioTrazo;
@@ -1220,11 +1289,11 @@ public class Arma : MonoBehaviour
             ? jugadorQueLaEquipo.DireccionHorizontal
             : (transform.right.x >= 0f ? 1f : -1f);
 
-        Vector3 direccionDisparo = new Vector3(
-            dirX,
-            Random.Range(-Dispersion, Dispersion) * 0.1f,
-            0f
-        ).normalized;
+        // Pegado de frente a una pared: el disparo sale hacia arriba en vez de hacia adelante
+        bool haciaArriba = PegadoAPared();
+        Vector3 direccionDisparo = haciaArriba
+            ? new Vector3(Random.Range(-Dispersion, Dispersion) * 0.1f, 1f, 0f).normalized
+            : new Vector3(dirX, Random.Range(-Dispersion, Dispersion) * 0.1f, 0f).normalized;
         Debug.Log("direccionDisparo: " + direccionDisparo);
 
         // Punto visual de salida en la boca del arma
@@ -1232,7 +1301,9 @@ public class Arma : MonoBehaviour
         Bounds b = ObtenerBoundsArma();
         if (b.size.sqrMagnitude > 0.00001f)
         {
-            inicioTrazo = new Vector3(dirX > 0f ? b.max.x : b.min.x, b.center.y, b.center.z);
+            inicioTrazo = haciaArriba
+                ? new Vector3(b.center.x, b.max.y, b.center.z)
+                : new Vector3(dirX > 0f ? b.max.x : b.min.x, b.center.y, b.center.z);
         }
 
         // El rayo sale a la altura del arma pero en el mismo plano Z que el jugador
