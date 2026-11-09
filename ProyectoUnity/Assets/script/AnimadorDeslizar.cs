@@ -30,25 +30,59 @@ public class AnimadorDeslizar : MonoBehaviour
 
     private void Awake()
     {
+        RefrescarHuesos();
+        CrearPolvo();
+    }
+
+    public void RefrescarHuesos()
+    {
         animator = GetComponent<Animator>();
         if (animator == null) animator = GetComponentInChildren<Animator>();
-        if (animator == null || !animator.isHuman) { enabled = false; return; }
+        if (animator == null) { enabled = false; return; }
 
-        foreach (AnimatorControllerParameter p in animator.parameters)
+        tieneParametro = false;
+        if (animator.runtimeAnimatorController != null)
         {
-            if (p.nameHash == ParamDeslizando) tieneParametro = true;
+            foreach (AnimatorControllerParameter p in animator.parameters)
+            {
+                if (p.nameHash == ParamDeslizando) tieneParametro = true;
+            }
         }
 
-        caderas = animator.GetBoneTransform(HumanBodyBones.Hips);
-        columna = animator.GetBoneTransform(HumanBodyBones.Spine);
-        pecho = animator.GetBoneTransform(HumanBodyBones.Chest);
-        cabeza = animator.GetBoneTransform(HumanBodyBones.Head);
-        musloIzq = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
-        musloDer = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
-        rodillaIzq = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
-        rodillaDer = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
+        if (animator.isHuman)
+        {
+            caderas = animator.GetBoneTransform(HumanBodyBones.Hips);
+            columna = animator.GetBoneTransform(HumanBodyBones.Spine);
+            pecho = animator.GetBoneTransform(HumanBodyBones.Chest);
+            cabeza = animator.GetBoneTransform(HumanBodyBones.Head);
+            musloIzq = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+            musloDer = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+            rodillaIzq = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
+            rodillaDer = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
+            enabled = caderas != null;
+        }
+        else
+        {
+            caderas = BuscarHueso("Hips");
+            columna = BuscarHueso("Spine");
+            pecho = BuscarHueso("Spine1");
+            cabeza = BuscarHueso("Head");
+            musloIzq = BuscarHueso("LeftUpLeg");
+            musloDer = BuscarHueso("RightUpLeg");
+            rodillaIzq = BuscarHueso("LeftLeg");
+            rodillaDer = BuscarHueso("RightLeg");
+            enabled = caderas != null;
+        }
+    }
 
-        CrearPolvo();
+    private Transform BuscarHueso(string sufijo)
+    {
+        foreach (Transform t in GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name.EndsWith(sufijo, System.StringComparison.OrdinalIgnoreCase))
+                return t;
+        }
+        return null;
     }
 
     private void LateUpdate()

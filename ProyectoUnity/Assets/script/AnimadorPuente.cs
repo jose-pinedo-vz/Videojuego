@@ -53,7 +53,7 @@ public class AnimadorPuente : NetworkBehaviour
         // animator.SetBool("estaAgachado",   agachado); // Parámetro no existe en el Animator
 
         // Solo saltar si está en suelo, no está deslizando, y presiona espacio
-        if (enSuelo && !deslizando && Keyboard.current.spaceKey.wasPressedThisFrame)
+        if (enSuelo && !deslizando && Keyboard.current.wKey.wasPressedThisFrame)
         {
             animator.SetTrigger("Saltar");
         }

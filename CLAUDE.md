@@ -38,7 +38,7 @@ Compilar/validar sin abrir el editor:
 | `CamaraSeguir.cs` | `CamaraSeguir` | Cámara sigue al jugador local en X/Y. |
 | `movimientoJugador.cs` | `JugadorMovimiento` | Movimiento viejo (desactivado en el prefab). |
 
-Controles: A/D mover, Espacio saltar, Shift deslizar (en movimiento) / agacharse (quieto), C recoger arma, V disparar.
+Controles: A/D mover, W saltar, Shift deslizar (en movimiento) / agacharse (quieto), C recoger arma, V disparar, en el lobby (pantalla de nombres) se elige personaje con 4 botones.
 
 ## Animator (`Assets/PersonajeAnimator.controller`)
 

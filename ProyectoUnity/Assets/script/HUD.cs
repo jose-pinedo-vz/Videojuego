@@ -107,7 +107,7 @@ public class HUD : MonoBehaviour
     {
         if (p == null) continue;
         Red r = p.GetComponent<Red>();
-        string nombreJugador = (r != null && r.nombreJugador != null) ? r.nombreJugador.Value.ToString() : p.name;
+        string nombreJugador = r != null ? r.ObtenerEtiquetaJugador() : p.name;
         int bajasVal = (p.bajas != null) ? p.bajas.Value : 0;
         texto += nombreJugador + "  -  " + bajasVal + " bajas\n";
     }

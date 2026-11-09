@@ -121,7 +121,7 @@ public class inicio : MonoBehaviour
     private static string nombreDe(Personaje p)
     {
         Red r = p.GetComponent<Red>();
-        return r != null ? r.nombreJugador.Value.ToString() : p.name;
+        return r != null ? r.ObtenerEtiquetaJugador() : p.name;
     }
 
     // boton "Volver al menu" de la pantalla final: el host cierra la sala y los clientes se desconectan

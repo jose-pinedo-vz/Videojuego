@@ -37,8 +37,12 @@ public class GestorSonido : MonoBehaviour
     public const float DistanciaMaxima = 24f;
 
     private const int Fuentes = 14;
-    private const float VolumenAmbiente = 0.3f;
-    private const float VolumenMusica = 0.3f;
+    private const float VolumenAmbiente = 0.25f;
+    private const float VolumenMusicaMenu = 0.28f;
+    private const string PistaPartidaPrincipal = "Throttle_Locked_Open";
+    private const float VolumenMusicaPartidaInicial = 0.02f;
+    private const float VolumenMusicaPartidaObjetivo = 0.24f;
+    private const float TiempoSubidaMusicaPartida = 15.0f;
     private const float TiempoCruce = 1.2f;
 
     private static GestorSonido instancia;
@@ -79,6 +83,14 @@ public class GestorSonido : MonoBehaviour
     private void Awake()
     {
         foreach (AudioClip c in Resources.LoadAll<AudioClip>("Audio")) clips[c.name] = c;
+
+#if UNITY_EDITOR
+        if (!clips.ContainsKey(PistaPartidaPrincipal))
+        {
+            AudioClip clipEditor = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Throttle_Locked_Open.mp3");
+            if (clipEditor != null) clips[PistaPartidaPrincipal] = clipEditor;
+        }
+#endif
 
         pool = new AudioSource[Fuentes];
         for (int i = 0; i < Fuentes; i++) pool[i] = NuevaFuente(false);
@@ -131,7 +143,7 @@ public class GestorSonido : MonoBehaviour
         if (Keyboard.current != null && Keyboard.current.mKey.wasPressedThisFrame) musicaActiva = !musicaActiva;
 
         Cruzar(ambienteA, ambienteB, ambienteActual, VolumenAmbiente);
-        Cruzar(musicaA, musicaB, musicaActual, musicaActiva ? VolumenMusica : 0f);
+        CruzarMusica();
         SonidosSueltos();
     }
 
@@ -164,10 +176,12 @@ public class GestorSonido : MonoBehaviour
         return "amb_menu";
     }
 
-    // cada mapa tiene su cancion; en el menu y la pantalla final suena la del menu
-    private static string PistaDe(string mapa)
+    // Durante toda la partida suena Throttle_Locked_Open en bucle continuo; en menú y pantalla final suena musica_menu
+    private string PistaDe(string mapa)
     {
         if (mapa == null) return "musica_menu";
+        if (clips.ContainsKey(PistaPartidaPrincipal)) return PistaPartidaPrincipal;
+
         if (mapa.Contains("cochera")) return "musica_juego1";
         if (mapa.Contains("cocina") || mapa.Contains("cosina")) return "musica_juego2";
         if (mapa.Contains("patio")) return "musica_juego3";
@@ -181,9 +195,33 @@ public class GestorSonido : MonoBehaviour
         if (!clips.TryGetValue(nombre, out AudioClip clip)) return actual;
         AudioSource nueva = actual == a ? b : a;
         nueva.clip = clip;
-        nueva.volume = 0f;
+        nueva.loop = true;
+        nueva.time = 0f;
+        nueva.volume = (nombre == PistaPartidaPrincipal && musicaActiva) ? VolumenMusicaPartidaInicial : 0f;
         nueva.Play();
         return nueva;
+    }
+
+    private void CruzarMusica()
+    {
+        float pasoSalida = Time.unscaledDeltaTime / TiempoCruce * 0.35f;
+
+        if (!musicaActiva || musicaActual == null)
+        {
+            Mover(musicaA, null, 0f, pasoSalida);
+            Mover(musicaB, null, 0f, pasoSalida);
+            return;
+        }
+
+        bool esCancionPartida = pistaActual == PistaPartidaPrincipal;
+        float objetivo = esCancionPartida ? VolumenMusicaPartidaObjetivo : VolumenMusicaMenu;
+        float pasoSubida = esCancionPartida
+            ? ((VolumenMusicaPartidaObjetivo - VolumenMusicaPartidaInicial) / TiempoSubidaMusicaPartida) * Time.unscaledDeltaTime
+            : (VolumenMusicaMenu / TiempoCruce) * Time.unscaledDeltaTime;
+
+        AudioSource anterior = musicaActual == musicaA ? musicaB : musicaA;
+        Mover(anterior, musicaActual, 0f, pasoSalida);
+        Mover(musicaActual, musicaActual, objetivo, pasoSubida);
     }
 
     private void CambiarAmbienteSegunMapa()

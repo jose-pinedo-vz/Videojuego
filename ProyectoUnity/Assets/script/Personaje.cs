@@ -72,7 +72,15 @@ public class Personaje : NetworkBehaviour
         controlador.stepOffset = 0.15f;
         transform.rotation = Quaternion.Euler(0f, direccionPersonaje > 0f ? 90f : -90f, 0f);
 
-        animator = GetComponentInChildren<Animator>(); // sirve si el Animator esta en el cuerpo o en el modelo hijo
+        RefrescarAnimator();
+    }
+
+    public void RefrescarAnimator()
+    {
+        animator = GetComponent<Animator>();
+        if (animator == null) animator = GetComponentInChildren<Animator>();
+
+        parametrosAnimator.Clear();
         if (animator != null && animator.runtimeAnimatorController != null)
         {
             foreach (AnimatorControllerParameter parametro in animator.parameters)
@@ -81,11 +89,28 @@ public class Personaje : NetworkBehaviour
             }
         }
     }
+
+    private bool TieneModeloVisible()
+    {
+        foreach (Renderer r in GetComponentsInChildren<Renderer>(false))
+        {
+            if (r == null || !r.enabled) continue;
+            if (r is SkinnedMeshRenderer) return true;
+            if (r is MeshRenderer
+                && r.GetComponentInParent<Arma>() == null
+                && r.GetComponent<TMPro.TMP_Text>() == null)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     protected virtual void Update() //Se actualiza siempre lo que esta dentro de esta funcion
     {
 
         if (IsSpawned && !IsOwner) return; // un objeto por equipo en red
-        if (!GetComponentInChildren<Renderer>().enabled) return; // espera a que empeise la partida
+        if (!TieneModeloVisible()) return; // espera a que empeise la partida
         if (muriendo) return; // en plena animacion de muerte no se mueve
 
 
@@ -106,7 +131,7 @@ public class Personaje : NetworkBehaviour
         //teclas especiales para funciones
         if (!estaDeslizando)
         {
-        if (controlador.isGrounded && Keyboard.current.spaceKey.wasPressedThisFrame)
+        if (controlador.isGrounded && Keyboard.current.wKey.wasPressedThisFrame)
         {
             Saltar();
         }
@@ -363,6 +388,13 @@ public class Personaje : NetworkBehaviour
         if (armaEquipada != null) armaEquipada.ActualizarRayoRemoto(activo, inicio, fin, ancho);
     }
 
+    // Sincronizacion del sonido de carga de la Raygun para los demas jugadores
+    [Rpc(SendTo.NotMe)]
+    public void ActualizarCargaRayoRpc(bool cargando)
+    {
+        if (armaEquipada != null) armaEquipada.ActualizarCargaRayoRemoto(cargando);
+    }
+
     [Rpc(SendTo.Owner)]
     private void MorirDuenioRpc(Vector3 destino)
     {
@@ -384,12 +416,18 @@ public class Personaje : NetworkBehaviour
 
         // renderizadores del cuerpo (sin el arma ni efectos)
         List<Renderer> cuerpo = new List<Renderer>();
+        List<Renderer> etiquetas = new List<Renderer>();
         List<Material> materiales = new List<Material>();
         foreach (Renderer r in modelo.GetComponentsInChildren<Renderer>(false))
         {
             if (!(r is MeshRenderer) && !(r is SkinnedMeshRenderer)) continue;
             if (r.GetComponentInParent<Arma>() != null) continue;
             if (!r.enabled) continue;
+            if (r.GetComponent<TMPro.TMP_Text>() != null)
+            {
+                etiquetas.Add(r);
+                continue;
+            }
             cuerpo.Add(r);
             foreach (Material m in r.sharedMaterials) if (m != null) materiales.Add(m);
         }
@@ -399,6 +437,7 @@ public class Personaje : NetworkBehaviour
         foreach (Renderer r in cuerpo) { if (primero) { area = r.bounds; primero = false; } else area.Encapsulate(r.bounds); }
 
         foreach (Renderer r in cuerpo) r.enabled = false; // el modelo desaparece y en su lugar quedan los cubos
+        foreach (Renderer r in etiquetas) if (r != null) r.enabled = false;
 
         List<GameObject> cubos = new List<GameObject>();
         for (int i = 0; i < CUBOS_MUERTE; i++)
@@ -445,6 +484,7 @@ public class Personaje : NetworkBehaviour
 
         yield return new WaitForSeconds(0.25f); // sin cuerpo un momento antes de reaparecer
         foreach (Renderer r in cuerpo) if (r != null) r.enabled = true;
+        foreach (Renderer r in etiquetas) if (r != null) r.enabled = true;
         modelo.localRotation = Quaternion.identity;
     }
 

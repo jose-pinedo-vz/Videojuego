@@ -39,6 +39,117 @@ public class GameManager : NetworkBehaviour
     private List<int> ordenMapas = new List<int>(); // mapas que faltan por jugarse, ya mezclados
     private int ultimoMapa = -1;
 
+    // Registro en servidor para asignar uno de los 4 personajes (Cheto, Kaiser, Dorito, CR7) al azar sin repetir
+    private readonly Dictionary<ulong, int> personajePorCliente = new Dictionary<ulong, int>();
+    private readonly Dictionary<ulong, FixedString32Bytes> etiquetaPorCliente = new Dictionary<ulong, FixedString32Bytes>();
+
+    public int AsignarPersonajeUnico(ulong clientId)
+    {
+        LimpiarClientesDesconectados();
+
+        if (personajePorCliente.TryGetValue(clientId, out int yaAsignado))
+        {
+            return yaAsignado;
+        }
+
+        HashSet<int> ocupados = new HashSet<int>(personajePorCliente.Values);
+        List<int> disponibles = new List<int>();
+        for (int i = 0; i < CatalogoPersonajes.TOTAL_PERSONAJES; i++)
+        {
+            if (!ocupados.Contains(i))
+            {
+                disponibles.Add(i);
+            }
+        }
+
+        // Respaldo por si hubiera más de 4 clientes conectados simultáneamente
+        if (disponibles.Count == 0)
+        {
+            for (int i = 0; i < CatalogoPersonajes.TOTAL_PERSONAJES; i++)
+                disponibles.Add(i);
+        }
+
+        int elegido = disponibles[Random.Range(0, disponibles.Count)];
+        personajePorCliente[clientId] = elegido;
+        Debug.Log($"GameManager: Cliente {clientId} recibió personaje aleatorio '{CatalogoPersonajes.ObtenerSubnombre(elegido)}' (índice {elegido}).");
+        return elegido;
+    }
+
+    // Cambio de personaje en el lobby: solo se permite si nadie más lo tiene
+    public bool CambiarPersonaje(ulong clientId, int nuevo)
+    {
+        if (partidaActiva) return false; // solo se elige en el lobby, antes de iniciar
+        if (nuevo < 0 || nuevo >= CatalogoPersonajes.TOTAL_PERSONAJES) return false;
+        LimpiarClientesDesconectados();
+        foreach (var kv in personajePorCliente)
+        {
+            if (kv.Key != clientId && kv.Value == nuevo) return false;
+        }
+        personajePorCliente[clientId] = nuevo;
+        return true;
+    }
+
+    private void LimpiarClientesDesconectados()
+    {
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening) return;
+
+        HashSet<ulong> activos = new HashSet<ulong>(NetworkManager.Singleton.ConnectedClientsIds);
+        List<ulong> obsoletos = new List<ulong>();
+        foreach (ulong id in personajePorCliente.Keys)
+        {
+            if (!activos.Contains(id)) obsoletos.Add(id);
+        }
+        foreach (ulong id in obsoletos)
+        {
+            personajePorCliente.Remove(id);
+            etiquetaPorCliente.Remove(id);
+        }
+    }
+
+    public void RegistrarJugadorEnSala(ulong clientId, string nombreConSubnombre)
+    {
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer) return;
+
+        FixedString32Bytes valor = nombreConSubnombre;
+        etiquetaPorCliente[clientId] = valor;
+        SincronizarListaNombresServidor();
+    }
+
+    private void SincronizarListaNombresServidor()
+    {
+        if (!IsServer || nombresJugadores == null) return;
+
+        nombresJugadores.Clear();
+        if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
+        {
+            foreach (ulong id in NetworkManager.Singleton.ConnectedClientsIds)
+            {
+                if (etiquetaPorCliente.TryGetValue(id, out FixedString32Bytes nombre))
+                {
+                    nombresJugadores.Add(nombre);
+                }
+            }
+        }
+        else
+        {
+            foreach (var kv in etiquetaPorCliente)
+            {
+                nombresJugadores.Add(kv.Value);
+            }
+        }
+    }
+
+    private void AlDesconectarseCliente(ulong clientId)
+    {
+        if (!IsServer) return;
+        bool habia = personajePorCliente.Remove(clientId);
+        habia |= etiquetaPorCliente.Remove(clientId);
+        if (habia)
+        {
+            SincronizarListaNombresServidor();
+        }
+    }
+
     // Orden aleatorio: no se repite un mapa hasta haber jugado todos
     private int SiguienteMapa(int cantidadMapas)
     {
@@ -233,6 +344,11 @@ public class GameManager : NetworkBehaviour
         texto = FindFirstObjectByType<inicio>();
         nombresJugadores.OnListChanged += OnListaCambio;
 
+        if (IsServer && NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientDisconnectCallback += AlDesconectarseCliente;
+        }
+
         if (txt_tiempo != null)
         {
             txt_tiempo.gameObject.SetActive(false);
@@ -246,6 +362,12 @@ public class GameManager : NetworkBehaviour
     public override void OnNetworkDespawn()
     {
         nombresJugadores.OnListChanged -= OnListaCambio;
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientDisconnectCallback -= AlDesconectarseCliente;
+        }
+        personajePorCliente.Clear();
+        etiquetaPorCliente.Clear();
         actualizarTexto();
     }
     

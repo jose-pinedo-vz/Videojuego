@@ -52,13 +52,56 @@ public class AnimadorArma : MonoBehaviour
         mano = transform.Find("Mano");
         if (mano != null) manoOriginal = mano.localPosition;
 
-        modelo = transform.Find("Personaje gato");
+        modelo = BuscarModeloInicial();
         if (modelo != null) escalaModelo = modelo.localScale;
 
+        RefrescarHuesosAnimator();
+    }
+
+    private Transform BuscarModeloInicial()
+    {
+        Transform gato = transform.Find("Personaje gato");
+        if (gato != null) return gato;
+
+        for (int i = 0; i < transform.childCount; i++)
+        {
+            Transform h = transform.GetChild(i);
+            if (!CatalogoPersonajes.EsObjetoAuxiliarJugador(h))
+                return h;
+        }
+        return null;
+    }
+
+    public void ActualizarModeloPersonaje(Transform nuevoModelo)
+    {
+        modelo = nuevoModelo != null ? nuevoModelo : BuscarModeloInicial();
+        if (modelo != null) escalaModelo = modelo.localScale;
+        RefrescarHuesosAnimator();
+    }
+
+    private void RefrescarHuesosAnimator()
+    {
+        animator = GetComponent<Animator>();
+        if (animator == null) animator = GetComponentInChildren<Animator>();
+
+        huesoMano = null;
         if (animator != null)
         {
             capaArma = animator.GetLayerIndex(NombreCapa);
-            if (animator.isHuman) huesoMano = animator.GetBoneTransform(HumanBodyBones.RightHand);
+            if (animator.isHuman)
+                huesoMano = animator.GetBoneTransform(HumanBodyBones.RightHand);
+        }
+
+        if (huesoMano == null && modelo != null)
+        {
+            foreach (Transform t in modelo.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name.EndsWith("RightHand", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    huesoMano = t;
+                    break;
+                }
+            }
         }
     }
 

@@ -54,8 +54,28 @@ public class Arma : MonoBehaviour
     private bool disparandoRayo = false;
     private bool cargandoRayo = false;
     private bool disparandoRayoRemoto = false;
+    private bool cargandoRayoRemoto = false;
+    private float tiempoCargaRemota = 0f;
     private AudioSource audioLoopRayo;
+    private AudioClip clipRaygunCache;
     private HashSet<Personaje> victimasAlcanzadas = new HashSet<Personaje>();
+
+    private enum EstadoAudioRaygun { Inactivo, Cargando, Disparando, Desvaneciendo }
+    private EstadoAudioRaygun estadoAudioRaygun = EstadoAudioRaygun.Inactivo;
+    private float velocidadFadeRaygun = 4f;
+
+    // Segmentos medidos sobre "raygun audio disparo.mp3" (20.35s):
+    // 8.75s -> 11.75s (3.00s exactos de carga ascendente), 11.75s pico de disparo, 12.25s..14.45s sostén de rayo, 14.85s+ apagado
+    private const float RAYGUN_CLIP_INICIO_CARGA = 8.75f;
+    private const float RAYGUN_CLIP_PICO_DISPARO = 11.75f;
+    private const float RAYGUN_CLIP_LOOP_INICIO = 12.25f;
+    private const float RAYGUN_CLIP_LOOP_FIN = 14.45f;
+    private const float RAYGUN_CLIP_COLA_APAGADO = 14.85f;
+    private const float RAYGUN_VOLUMEN_DISPARO = 0.72f;
+
+    // Offset visual de referencia tomado directamente del AK-47 cuando el jugador apunta hacia la derecha (-X)
+    private static bool tieneOffsetReferenciaAK = false;
+    private static Vector3 offsetReferenciaAKDerecha = new Vector3(-0.082f, 0.144f, -0.261f);
 
     [SerializeField] protected Vector3 rotacionEnMano = Vector3.zero; //Estos 2 son para controlar donde la va a agarrar
     [SerializeField] protected Vector3 posicionEnMano = Vector3.zero; //Ocupare ayuda en esto porque es a mano, ojo de buen cubero y presicion
@@ -96,16 +116,13 @@ public class Arma : MonoBehaviour
     public float DuracionBateriaMaxima => duracionBateriaMaxima;
     public bool DisparandoRayo => disparandoRayo;
     public bool CargandoRayo => cargandoRayo;
+    public bool TieneAudioPersonalizadoRayo => ObtenerClipRaygun() != null;
 
     protected virtual void Awake()
     {
         municionActual = municionMaxima;
         duracionBateriaActual = duracionBateriaMaxima;
         rotacionInicial = transform.rotation;
-        rotacionBaseIzquierda = CalcularRotacionBaseIzquierda();
-
-        if (jugadorQueLaEquipo == null)
-            transform.rotation = rotacionBaseIzquierda;
 
         InicializarRenderizadoresArma();
         if (renderizadoresArma != null)
@@ -114,10 +131,32 @@ public class Arma : MonoBehaviour
                 if (mr != null) mr.enabled = true;
         }
 
-        NormalizarEscalaArmaSiEsNecesario();
+        RecalibrarModeloVisual();
         CrearCajaVisualSiNoExiste();
         AjustarAreaDeRecogida();
         ColocarEnCaja(iniciarEnCaja);
+    }
+
+    public void RecalibrarModeloVisual()
+    {
+        InicializarRenderizadoresArma();
+        rotacionBaseIzquierda = CalcularRotacionBaseIzquierda();
+        NormalizarEscalaArmaSiEsNecesario();
+
+        if (jugadorQueLaEquipo == null)
+            transform.rotation = rotacionBaseIzquierda;
+        else
+            ActualizarRotacionEnMano();
+
+        RegistrarReferenciaAKSiCorresponde();
+        if (cajaVisual != null)
+        {
+            Bounds boundsArma = ObtenerBoundsArma();
+            if (boundsArma.size.sqrMagnitude > 0.00001f)
+                cajaVisual.transform.position = boundsArma.center;
+            ActualizarTransformCaja();
+        }
+        AjustarAreaDeRecogida();
     }
 
     protected virtual void Start()
@@ -181,33 +220,133 @@ public class Arma : MonoBehaviour
             foreach (MeshRenderer mr in renderizadoresArma)
             {
                 if (mr == null) continue;
+
+                MeshFilter mf = mr.GetComponent<MeshFilter>();
+                Bounds mrBounds = (mf != null && mf.sharedMesh != null)
+                    ? TransformarBoundsLocalAMundo(mf.sharedMesh.bounds, mr.transform.localToWorldMatrix)
+                    : mr.bounds;
+
+                if (mrBounds.size.sqrMagnitude < 0.000001f) continue;
+
                 if (!tieneBounds)
                 {
-                    b = mr.bounds;
+                    b = mrBounds;
                     tieneBounds = true;
                 }
                 else
                 {
-                    b.Encapsulate(mr.bounds);
+                    b.Encapsulate(mrBounds);
                 }
             }
         }
         return b;
     }
 
+    private static Bounds TransformarBoundsLocalAMundo(Bounds localBounds, Matrix4x4 matriz)
+    {
+        Vector3 c = localBounds.center;
+        Vector3 e = localBounds.extents;
+        Bounds resultado = new Bounds(matriz.MultiplyPoint3x4(new Vector3(c.x - e.x, c.y - e.y, c.z - e.z)), Vector3.zero);
+        for (int ix = -1; ix <= 1; ix += 2)
+        {
+            for (int iy = -1; iy <= 1; iy += 2)
+            {
+                for (int iz = -1; iz <= 1; iz += 2)
+                {
+                    resultado.Encapsulate(matriz.MultiplyPoint3x4(new Vector3(c.x + ix * e.x, c.y + iy * e.y, c.z + iz * e.z)));
+                }
+            }
+        }
+        return resultado;
+    }
+
+    private void RegistrarReferenciaAKSiCorresponde()
+    {
+        string n = gameObject.name.ToLowerInvariant();
+        if (!n.Contains("ak")) return;
+
+        Quaternion rotGuardada = transform.rotation;
+        Quaternion rotDerechaAK = Quaternion.Euler(0f, 180f, 0f) * rotacionBaseIzquierda * Quaternion.Euler(rotacionEnMano);
+        transform.rotation = rotDerechaAK;
+
+        Bounds b = ObtenerBoundsArma();
+        if (b.size.sqrMagnitude > 0.00001f)
+        {
+            offsetReferenciaAKDerecha = b.center - transform.position;
+            tieneOffsetReferenciaAK = true;
+        }
+
+        transform.rotation = rotGuardada;
+    }
+
+    private static void AsegurarReferenciaAKEnEscena()
+    {
+        if (tieneOffsetReferenciaAK) return;
+        foreach (Arma a in FindObjectsByType<Arma>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (a != null && a.gameObject.name.ToLowerInvariant().Contains("ak"))
+            {
+                a.rotacionBaseIzquierda = a.CalcularRotacionBaseIzquierda();
+                a.NormalizarEscalaArmaSiEsNecesario();
+                a.RegistrarReferenciaAKSiCorresponde();
+                if (tieneOffsetReferenciaAK) return;
+            }
+        }
+    }
+
     private Quaternion CalcularRotacionBaseIzquierda()
     {
         string n = gameObject.name.ToLowerInvariant();
-        if (n.Contains("barret"))
-            return Quaternion.Euler(0f, 90f, -90f);
-        if (n.Contains("mac10") || n.Contains("mac"))
-            return Quaternion.Euler(0f, 0f, 180f);
-        if (n.Contains("bereta") || n.Contains("raygun"))
-            return Quaternion.Euler(0f, 180f, 0f);
         if (n.Contains("ak"))
             return Quaternion.identity;
 
-        return GetComponent<MeshFilter>() != null ? rotacionInicial : Quaternion.identity;
+        MeshFilter mfRaiz = GetComponent<MeshFilter>();
+        if (mfRaiz != null && mfRaiz.sharedMesh != null)
+        {
+            Vector3 sz = mfRaiz.sharedMesh.bounds.size;
+
+            if (n.Contains("barret") || n.Contains("mac"))
+            {
+                // En barret.fbx y mac10.fbx la malla está en la raíz y tenía rotación (-90, 0, -90) en Blender:
+                // el largo del cañón viene en el eje Z local y el alto en el eje X local.
+                if (sz.z > sz.x)
+                    return Quaternion.Euler(0f, -90f, 90f);
+                return Quaternion.Euler(0f, 180f, 0f);
+            }
+
+            if (n.Contains("raygun"))
+            {
+                // En raygun.fbx la malla está en la raíz y tenía rotación (90, -180, 0) en Blender:
+                // el largo del cañón viene en el eje X local pero el alto viene en el eje Z local.
+                if (sz.z > sz.y)
+                    return Quaternion.Euler(90f, 180f, 0f);
+                return Quaternion.Euler(0f, 180f, 0f);
+            }
+
+            if (n.Contains("bereta"))
+            {
+                return Quaternion.Euler(0f, 180f, 0f);
+            }
+        }
+        else
+        {
+            // Si la malla está en un hijo (como en ak47.fbx o con Preserve Hierarchy activo), el hijo ya guarda su giro de Blender
+            if (n.Contains("barret") || n.Contains("mac") || n.Contains("bereta") || n.Contains("raygun"))
+                return Quaternion.identity;
+        }
+
+        return mfRaiz != null ? rotacionInicial : Quaternion.identity;
+    }
+
+    private float ObtenerLargoObjetivoMetros()
+    {
+        string n = gameObject.name.ToLowerInvariant();
+        if (n.Contains("ak"))     return 0.743f; // rifle de asalto (escala 0.20 del AK-47)
+        if (n.Contains("barret")) return 0.93f;  // rifle francotirador
+        if (n.Contains("mac"))    return 0.39f;  // subfusil compacto
+        if (n.Contains("bereta")) return 0.28f;  // pistola
+        if (n.Contains("raygun")) return 0.42f;  // arma de rayos
+        return 0.55f;
     }
 
     private void NormalizarEscalaArmaSiEsNecesario()
@@ -215,37 +354,30 @@ public class Arma : MonoBehaviour
         string n = gameObject.name.ToLowerInvariant();
         if (n.Contains("ak"))
         {
-            if (transform.localScale.x > 0.8f) transform.localScale = new Vector3(0.2f, 0.2f, 0.2f);
-            return;
-        }
-        if (n.Contains("barret"))
-        {
-            if (transform.localScale.x > 0.8f) transform.localScale = new Vector3(0.208f, 0.208f, 0.208f);
-            return;
-        }
-        if (n.Contains("mac"))
-        {
-            if (transform.localScale.x > 0.8f) transform.localScale = new Vector3(0.25f, 0.25f, 0.25f);
-            return;
-        }
-        if (n.Contains("bereta"))
-        {
-            if (transform.localScale.x < 2f) transform.localScale = new Vector3(25f, 25f, 25f);
-            return;
-        }
-        if (n.Contains("raygun"))
-        {
-            if (transform.localScale.x > 0.8f) transform.localScale = new Vector3(0.15f, 0.15f, 0.15f);
+            transform.localScale = new Vector3(0.20f, 0.20f, 0.20f);
             return;
         }
 
+        if (transform.localScale.sqrMagnitude < 0.000001f)
+            transform.localScale = Vector3.one;
+
+        Quaternion rotGuardada = transform.rotation;
+        transform.rotation = rotacionBaseIzquierda;
+
         Bounds b = ObtenerBoundsArma();
-        float maxDim = Mathf.Max(b.size.x, Mathf.Max(b.size.y, b.size.z));
-        if (maxDim > 0.0001f && (maxDim < 0.15f || maxDim > 1.8f))
+        float largoActual = Mathf.Max(b.size.x, Mathf.Max(b.size.y, b.size.z));
+        float largoObjetivo = ObtenerLargoObjetivoMetros();
+
+        if (largoActual > 0.0001f)
         {
-            float factor = 0.55f / maxDim;
-            transform.localScale *= factor;
+            float factor = largoObjetivo / largoActual;
+            if (Mathf.Abs(factor - 1f) > 0.01f)
+            {
+                transform.localScale *= factor;
+            }
         }
+
+        transform.rotation = rotGuardada;
     }
 
     private void CrearCajaVisualSiNoExiste()
@@ -443,6 +575,11 @@ public class Arma : MonoBehaviour
         {
             ActualizarRotacionEnMano();
         }
+
+        if (modoDisparo == ModoDisparo.RayoContinuo || estadoAudioRaygun != EstadoAudioRaygun.Inactivo)
+        {
+            ActualizarAudioRaygun();
+        }
     }
 
     protected virtual void LateUpdate()
@@ -457,6 +594,32 @@ public class Arma : MonoBehaviour
                 ActualizarFisicaYVisualRayo();
             }
         }
+
+        ActualizarEfectoKamehameha();
+    }
+
+    // Efecto visual tipo Kamehameha (carga y haz) solo para la raygun
+    private EfectoKamehameha efectoKame;
+    private void ActualizarEfectoKamehameha()
+    {
+        if (modoDisparo != ModoDisparo.RayoContinuo) return;
+        bool cargando = cargandoRayo || cargandoRayoRemoto;
+        bool disparando = disparandoRayo || disparandoRayoRemoto;
+        if (efectoKame == null)
+        {
+            if (!cargando && !disparando) return;
+            efectoKame = GetComponent<EfectoKamehameha>();
+            if (efectoKame == null) efectoKame = gameObject.AddComponent<EfectoKamehameha>();
+        }
+
+        Vector3 boca = transform.position;
+        Bounds b = ObtenerBoundsArma();
+        if (b.size.sqrMagnitude > 0.00001f && jugadorQueLaEquipo != null)
+        {
+            float dirX = jugadorQueLaEquipo.DireccionHorizontal;
+            boca = new Vector3(dirX > 0f ? b.max.x : b.min.x, b.center.y, jugadorQueLaEquipo.transform.position.z);
+        }
+        efectoKame.Actualizar(cargando, disparando, boca, trazo, anchoRayo);
     }
 
     protected virtual void OnDisable()
@@ -471,11 +634,13 @@ public class Arma : MonoBehaviour
         if (renderizadorArma == null)
             renderizadorArma = GetComponentInChildren<MeshRenderer>();
 
+        AsegurarReferenciaAKEnEscena();
+
         bool mirandoIzquierda = jugadorQueLaEquipo.DireccionHorizontal > 0f;
         Vector3 posJugador = jugadorQueLaEquipo.transform.position;
 
         // 1. Calculamos primero la pose cuando el personaje mira a la derecha (-X, rotación Y = -90°),
-        //    donde la posición de Mano y el pivote del FBX ya colocan el arma frente al personaje (+Z).
+        //    alineando el centro real del mesh de cualquier arma exactamente al mismo offset respecto a Mano que el AK-47.
         Quaternion rotJugDerecha = Quaternion.Euler(0f, -90f, 0f);
         Vector3 offsetManoLocal = mano != null ? (mano.localPosition + posicionEnMano) : posicionEnMano;
         Vector3 posManoDerecha = posJugador
@@ -485,18 +650,27 @@ public class Arma : MonoBehaviour
         transform.rotation = rotArmaDerecha;
         transform.position = posManoDerecha;
 
+        Bounds boundsDerecha = ObtenerBoundsArma();
+        if (boundsDerecha.size.sqrMagnitude > 0.00001f)
+        {
+            Vector3 centroDeseadoDerecha = posManoDerecha + offsetReferenciaAKDerecha;
+            transform.position += (centroDeseadoDerecha - boundsDerecha.center);
+        }
+
         // 2. Si el personaje mira a la izquierda (+X), rotamos el arma 180° en Y (apuntando a +X)
         //    y espejeamos el centro visual del mesh en X respecto al personaje, manteniendo
         //    exactamente la misma altura (Y) y profundidad hacia la cámara (Z) para que no se oculte detrás.
         if (mirandoIzquierda)
         {
-            Vector3 centroDerecha = ObtenerCentroVisual();
+            Bounds bDer = ObtenerBoundsArma();
+            Vector3 centroDerecha = bDer.size.sqrMagnitude > 0.00001f ? bDer.center : ObtenerCentroVisual();
             Vector3 deltaDerecha = centroDerecha - posJugador;
 
             Quaternion rotArmaIzquierda = rotacionBaseIzquierda * Quaternion.Euler(rotacionEnMano);
             transform.rotation = rotArmaIzquierda;
 
-            Vector3 centroActual = ObtenerCentroVisual();
+            Bounds bIzq = ObtenerBoundsArma();
+            Vector3 centroActual = bIzq.size.sqrMagnitude > 0.00001f ? bIzq.center : ObtenerCentroVisual();
             Vector3 centroDeseadoIzquierda = posJugador + new Vector3(-deltaDerecha.x, deltaDerecha.y, deltaDerecha.z);
             transform.position += (centroDeseadoIzquierda - centroActual);
         }
@@ -622,6 +796,10 @@ public class Arma : MonoBehaviour
                 {
                     cargandoRayo = true;
                     IniciarAudioCarga();
+                    if (jugadorQueLaEquipo != null && jugadorQueLaEquipo.IsSpawned && jugadorQueLaEquipo.IsOwner)
+                    {
+                        jugadorQueLaEquipo.ActualizarCargaRayoRpc(true);
+                    }
                 }
                 tiempoCargaActual += Time.deltaTime;
 
@@ -631,6 +809,7 @@ public class Arma : MonoBehaviour
                     cargandoRayo = false;
                     disparandoRayo = true;
                     IniciarAudioRayo();
+                    ActualizarFisicaYVisualRayo();
                 }
             }
             else
@@ -738,17 +917,46 @@ public class Arma : MonoBehaviour
 
     public void DetenerRayoContinuo()
     {
+        bool estabaDisparando = disparandoRayo || disparandoRayoRemoto;
+        bool estabaCargando = cargandoRayo;
+
         tiempoCargaActual = 0f;
+        tiempoCargaRemota = 0f;
         cargandoRayo = false;
+        cargandoRayoRemoto = false;
         disparandoRayo = false;
         victimasAlcanzadas.Clear();
-        DetenerAudiosRayo();
+        DetenerAudiosRayo(estabaDisparando);
 
         if (trazo != null) trazo.enabled = false;
 
-        if (jugadorQueLaEquipo != null && jugadorQueLaEquipo.IsSpawned)
+        if (jugadorQueLaEquipo != null && jugadorQueLaEquipo.IsSpawned && jugadorQueLaEquipo.IsOwner)
         {
+            if (estabaCargando)
+                jugadorQueLaEquipo.ActualizarCargaRayoRpc(false);
             jugadorQueLaEquipo.ActualizarEstadoRayoRpc(false, Vector3.zero, Vector3.zero, 0f);
+        }
+    }
+
+    public void ActualizarCargaRayoRemoto(bool cargando)
+    {
+        if (cargando)
+        {
+            if (!cargandoRayoRemoto && !disparandoRayoRemoto)
+            {
+                cargandoRayoRemoto = true;
+                tiempoCargaRemota = 0f;
+                IniciarAudioCarga();
+            }
+        }
+        else
+        {
+            if (cargandoRayoRemoto && !disparandoRayoRemoto)
+            {
+                cargandoRayoRemoto = false;
+                tiempoCargaRemota = 0f;
+                DetenerAudiosRayo(false);
+            }
         }
     }
 
@@ -767,6 +975,7 @@ public class Arma : MonoBehaviour
                 trazo.widthCurve = AnimationCurve.Constant(0f, 1f, 1f);
                 trazo.widthMultiplier = ancho;
                 trazo.enabled = true;
+                cargandoRayoRemoto = false;
                 if (!disparandoRayoRemoto)
                 {
                     disparandoRayoRemoto = true;
@@ -775,42 +984,196 @@ public class Arma : MonoBehaviour
             }
             else
             {
+                bool veniaDisparando = disparandoRayoRemoto;
                 trazo.enabled = false;
                 disparandoRayoRemoto = false;
-                DetenerAudiosRayo();
+                cargandoRayoRemoto = false;
+                DetenerAudiosRayo(veniaDisparando);
             }
         }
     }
 
+    private AudioClip ObtenerClipRaygun()
+    {
+        if (clipRaygunCache != null) return clipRaygunCache;
+
+        clipRaygunCache = Resources.Load<AudioClip>("Audio/raygun_disparo");
+        if (clipRaygunCache == null)
+            clipRaygunCache = Resources.Load<AudioClip>("Audio/raygun audio disparo");
+#if UNITY_EDITOR
+        if (clipRaygunCache == null)
+            clipRaygunCache = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/raygun audio disparo.mp3");
+#endif
+        return clipRaygunCache;
+    }
+
+    private void AsegurarFuenteAudioRaygun()
+    {
+        if (audioLoopRayo != null) return;
+        audioLoopRayo = GetComponent<AudioSource>();
+        if (audioLoopRayo == null)
+            audioLoopRayo = gameObject.AddComponent<AudioSource>();
+
+        audioLoopRayo.playOnAwake = false;
+        audioLoopRayo.loop = false;
+        audioLoopRayo.spatialBlend = 0f;
+    }
+
+    private float CalcularAtenuacionDistancia()
+    {
+        Camera cam = Camera.main;
+        if (cam == null) return 1f;
+        float d = Vector2.Distance(
+            new Vector2(cam.transform.position.x, cam.transform.position.y),
+            new Vector2(transform.position.x, transform.position.y));
+        return Mathf.Clamp01(1f - d / GestorSonido.DistanciaMaxima);
+    }
+
     private void IniciarAudioCarga()
     {
+        AsegurarFuenteAudioRaygun();
+        AudioClip clip = ObtenerClipRaygun();
+
+        if (clip != null && clip.length > RAYGUN_CLIP_PICO_DISPARO + 0.5f && audioLoopRayo != null)
+        {
+            float duracionSegmentoCarga = RAYGUN_CLIP_PICO_DISPARO - RAYGUN_CLIP_INICIO_CARGA; // 3.00s
+            audioLoopRayo.Stop();
+            audioLoopRayo.clip = clip;
+            audioLoopRayo.loop = false;
+            audioLoopRayo.pitch = duracionSegmentoCarga / Mathf.Max(0.25f, tiempoCargaRequerido);
+            audioLoopRayo.time = Mathf.Clamp(RAYGUN_CLIP_INICIO_CARGA, 0f, clip.length - 0.2f);
+            audioLoopRayo.volume = 0.24f * CalcularAtenuacionDistancia();
+            audioLoopRayo.Play();
+            estadoAudioRaygun = EstadoAudioRaygun.Cargando;
+            return;
+        }
+
+        // Respaldo si el clip aún no existe
         Sonidos.Reproducir("tick", transform.position, 1.2f, 1.6f);
     }
 
     private void IniciarAudioRayo()
     {
-        if (audioLoopRayo == null)
+        AsegurarFuenteAudioRaygun();
+        AudioClip clip = ObtenerClipRaygun();
+
+        if (clip != null && clip.length > RAYGUN_CLIP_PICO_DISPARO + 0.5f && audioLoopRayo != null)
         {
-            audioLoopRayo = gameObject.AddComponent<AudioSource>();
-            audioLoopRayo.playOnAwake = false;
-            audioLoopRayo.loop = true;
-            audioLoopRayo.spatialBlend = 0f;
+            audioLoopRayo.pitch = 1.0f;
+            audioLoopRayo.loop = false;
+
+            // Si venía reproduciendo la carga de 3s y ya llegó justo al pico (11.75s), continuar sin corte
+            bool veniaEnPunto = audioLoopRayo.clip == clip
+                && audioLoopRayo.isPlaying
+                && Mathf.Abs(audioLoopRayo.time - RAYGUN_CLIP_PICO_DISPARO) < 0.45f;
+
+            if (!veniaEnPunto)
+            {
+                audioLoopRayo.clip = clip;
+                audioLoopRayo.time = Mathf.Clamp(RAYGUN_CLIP_PICO_DISPARO, 0f, clip.length - 0.2f);
+                audioLoopRayo.Play();
+            }
+
+            audioLoopRayo.volume = RAYGUN_VOLUMEN_DISPARO * CalcularAtenuacionDistancia();
+            estadoAudioRaygun = EstadoAudioRaygun.Disparando;
+            return;
         }
-        AudioClip clip = Resources.Load<AudioClip>("Audio/raygun_laser");
-        if (clip == null) clip = Resources.Load<AudioClip>("Audio/disparo_raygun");
-        if (clip != null && audioLoopRayo != null)
+
+        AudioClip fallback = Resources.Load<AudioClip>("Audio/raygun_laser");
+        if (fallback == null) fallback = Resources.Load<AudioClip>("Audio/disparo_raygun");
+        if (fallback != null && audioLoopRayo != null)
         {
-            audioLoopRayo.clip = clip;
-            audioLoopRayo.volume = 0.55f;
+            audioLoopRayo.clip = fallback;
+            audioLoopRayo.loop = true;
+            audioLoopRayo.pitch = 1.0f;
+            audioLoopRayo.volume = 0.55f * CalcularAtenuacionDistancia();
             audioLoopRayo.Play();
+            estadoAudioRaygun = EstadoAudioRaygun.Disparando;
         }
     }
 
-    private void DetenerAudiosRayo()
+    private void DetenerAudiosRayo(bool veniaDisparandoRayo)
     {
-        if (audioLoopRayo != null && audioLoopRayo.isPlaying)
+        if (audioLoopRayo == null || !audioLoopRayo.isPlaying)
         {
-            audioLoopRayo.Stop();
+            estadoAudioRaygun = EstadoAudioRaygun.Inactivo;
+            return;
+        }
+
+        AudioClip clip = audioLoopRayo.clip;
+        if (veniaDisparandoRayo && clip != null && clip == ObtenerClipRaygun() && clip.length > RAYGUN_CLIP_COLA_APAGADO + 0.3f)
+        {
+            // Pasar a la cola de enfriamiento del audio y desvanecer suavemente
+            audioLoopRayo.pitch = 1.0f;
+            audioLoopRayo.loop = false;
+            if (audioLoopRayo.time < RAYGUN_CLIP_COLA_APAGADO)
+                audioLoopRayo.time = RAYGUN_CLIP_COLA_APAGADO;
+            velocidadFadeRaygun = RAYGUN_VOLUMEN_DISPARO / 0.45f;
+            estadoAudioRaygun = EstadoAudioRaygun.Desvaneciendo;
+            return;
+        }
+
+        // Si canceló la carga antes de los 3s, desvanecer rápido sin reproducir el disparo
+        velocidadFadeRaygun = Mathf.Max(audioLoopRayo.volume, 0.3f) / 0.12f;
+        estadoAudioRaygun = EstadoAudioRaygun.Desvaneciendo;
+    }
+
+    private void ActualizarAudioRaygun()
+    {
+        if (audioLoopRayo == null)
+        {
+            estadoAudioRaygun = EstadoAudioRaygun.Inactivo;
+            return;
+        }
+
+        switch (estadoAudioRaygun)
+        {
+            case EstadoAudioRaygun.Cargando:
+                if (!cargandoRayo && !cargandoRayoRemoto)
+                {
+                    DetenerAudiosRayo(false);
+                    break;
+                }
+                if (cargandoRayoRemoto) tiempoCargaRemota += Time.deltaTime;
+                float tActual = cargandoRayo ? tiempoCargaActual : tiempoCargaRemota;
+                float progreso = Mathf.Clamp01(tActual / Mathf.Max(0.1f, tiempoCargaRequerido));
+                audioLoopRayo.volume = Mathf.Lerp(0.24f, RAYGUN_VOLUMEN_DISPARO, progreso) * CalcularAtenuacionDistancia();
+                break;
+
+            case EstadoAudioRaygun.Disparando:
+                if (!disparandoRayo && !disparandoRayoRemoto)
+                {
+                    DetenerAudiosRayo(true);
+                    break;
+                }
+                audioLoopRayo.volume = RAYGUN_VOLUMEN_DISPARO * CalcularAtenuacionDistancia();
+
+                // Si usa el clip personalizado, hacer bucle continuo dentro de la ventana energética del rayo (12.25s..14.45s)
+                AudioClip clip = ObtenerClipRaygun();
+                if (clip != null && audioLoopRayo.clip == clip && !audioLoopRayo.loop)
+                {
+                    float limiteFin = Mathf.Min(RAYGUN_CLIP_LOOP_FIN, clip.length - 0.15f);
+                    if (!audioLoopRayo.isPlaying || audioLoopRayo.time >= limiteFin)
+                    {
+                        audioLoopRayo.time = Mathf.Min(RAYGUN_CLIP_LOOP_INICIO, limiteFin - 0.2f);
+                        if (!audioLoopRayo.isPlaying) audioLoopRayo.Play();
+                    }
+                }
+                break;
+
+            case EstadoAudioRaygun.Desvaneciendo:
+                if (!audioLoopRayo.isPlaying)
+                {
+                    estadoAudioRaygun = EstadoAudioRaygun.Inactivo;
+                    break;
+                }
+                audioLoopRayo.volume = Mathf.MoveTowards(audioLoopRayo.volume, 0f, velocidadFadeRaygun * Time.deltaTime);
+                if (audioLoopRayo.volume <= 0.002f)
+                {
+                    audioLoopRayo.Stop();
+                    estadoAudioRaygun = EstadoAudioRaygun.Inactivo;
+                }
+                break;
         }
     }
 
