@@ -36,13 +36,20 @@ public class GestorSonido : MonoBehaviour
 {
     public const float DistanciaMaxima = 24f;
 
-    private const int Fuentes = 14;
+    private const int Fuentes = 18;
     private const float VolumenAmbiente = 0.25f;
     private const float VolumenMusicaMenu = 0.28f;
+    private const string PistaMenuLobby = "BLACK OPS 2 ZOMBIES OFFICIAL Theme Song - spllitz";
     private const string PistaPartidaPrincipal = "Throttle_Locked_Open";
-    private const float VolumenMusicaPartidaInicial = 0.02f;
+    private static readonly string[] PistasPartida = new string[]
+    {
+        "Throttle_Locked_Open",          // Phonk
+        "Pisteando_hasta_que_aguante",   // Electro cumbia
+        "Gilded_Knuckles"                // Instrumental trap
+    };
+    private const float VolumenMusicaPartidaInicial = 0.04f;
     private const float VolumenMusicaPartidaObjetivo = 0.24f;
-    private const float TiempoSubidaMusicaPartida = 15.0f;
+    private const float TiempoSubidaMusicaPartida = 8.0f;
     private const float TiempoCruce = 1.2f;
 
     private static GestorSonido instancia;
@@ -59,6 +66,11 @@ public class GestorSonido : MonoBehaviour
     private bool musicaActiva = true; // la tecla M la apaga y la prende
     private string bucleActual;
     private float proximoSuelto;
+
+    // Cola aleatoria de canciones de partida
+    private readonly List<string> colaCancionesPartida = new List<string>();
+    private int indiceCancionPartida = 0;
+    private bool estabaEnPartida = false;
 
     private inicio menu;
     private List<GameObject> mapas = new List<GameObject>();
@@ -85,12 +97,23 @@ public class GestorSonido : MonoBehaviour
         foreach (AudioClip c in Resources.LoadAll<AudioClip>("Audio")) clips[c.name] = c;
 
 #if UNITY_EDITOR
-        if (!clips.ContainsKey(PistaPartidaPrincipal))
-        {
-            AudioClip clipEditor = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Throttle_Locked_Open.mp3");
-            if (clipEditor != null) clips[PistaPartidaPrincipal] = clipEditor;
-        }
+        CargarClipEditorSiFalta(PistaMenuLobby, "Assets/Audio/BLACK OPS 2 ZOMBIES OFFICIAL Theme Song - spllitz.mp3");
+        CargarClipEditorSiFalta("Throttle_Locked_Open", "Assets/Audio/Throttle_Locked_Open.mp3");
+        CargarClipEditorSiFalta("Pisteando_hasta_que_aguante", "Assets/Audio/Pisteando_hasta_que_aguante.mp3");
+        CargarClipEditorSiFalta("Gilded_Knuckles", "Assets/Audio/Gilded_Knuckles.mp3");
+        CargarClipEditorSiFalta("ak47 shoot sound", "Assets/Audio/ak47 shoot sound.mp3");
+        CargarClipEditorSiFalta("barret soot sound", "Assets/Audio/barret soot sound.mp3");
+        CargarClipEditorSiFalta("beretta shoot efect", "Assets/Audio/beretta shoot efect.mp3");
+        CargarClipEditorSiFalta("mac10 shoot efect", "Assets/Audio/mac10 shoot efect.mp3");
 #endif
+
+        // Mapear los sonidos reales de disparo a sus armas correspondientes
+        VincularAliasDisparo("disparo_ak47", "ak47 shoot sound");
+        VincularAliasDisparo("disparo_barret", "barret soot sound");
+        VincularAliasDisparo("disparo_antitanques", "barret soot sound");
+        VincularAliasDisparo("disparo_bereta", "beretta shoot efect");
+        VincularAliasDisparo("disparo_mac10", "mac10 shoot efect");
+        VincularAliasDisparo("disparo_escopeta", "barret soot sound");
 
         pool = new AudioSource[Fuentes];
         for (int i = 0; i < Fuentes; i++) pool[i] = NuevaFuente(false);
@@ -98,8 +121,65 @@ public class GestorSonido : MonoBehaviour
         ambienteA = NuevaFuente(true);
         ambienteB = NuevaFuente(true);
         sueltos = NuevaFuente(false);
-        musicaA = NuevaFuente(true);
-        musicaB = NuevaFuente(true);
+        musicaA = NuevaFuente(false);
+        musicaB = NuevaFuente(false);
+    }
+
+#if UNITY_EDITOR
+    private void CargarClipEditorSiFalta(string clave, string rutaAsset)
+    {
+        if (clips.ContainsKey(clave)) return;
+        AudioClip clipEditor = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(rutaAsset);
+        if (clipEditor != null) clips[clave] = clipEditor;
+    }
+#endif
+
+    private void VincularAliasDisparo(string claveDestino, string claveClipReal)
+    {
+        if (clips.TryGetValue(claveClipReal, out AudioClip clipReal) && clipReal != null)
+        {
+            clips[claveDestino] = clipReal;
+        }
+    }
+
+    private void BarajarColaPartida()
+    {
+        string ultimaPista = colaCancionesPartida.Count > 0
+            ? colaCancionesPartida[Mathf.Clamp(indiceCancionPartida, 0, colaCancionesPartida.Count - 1)]
+            : null;
+
+        colaCancionesPartida.Clear();
+        for (int i = 0; i < PistasPartida.Length; i++)
+        {
+            if (clips.ContainsKey(PistasPartida[i]))
+                colaCancionesPartida.Add(PistasPartida[i]);
+        }
+
+        // Fisher-Yates shuffle para orden aleatorio en cada partida
+        for (int i = colaCancionesPartida.Count - 1; i > 0; i--)
+        {
+            int j = Random.Range(0, i + 1);
+            (colaCancionesPartida[i], colaCancionesPartida[j]) = (colaCancionesPartida[j], colaCancionesPartida[i]);
+        }
+
+        // Evitar repetir inmediatamente la última canción si acabamos de re-barajar
+        if (colaCancionesPartida.Count > 1 && colaCancionesPartida[0] == ultimaPista)
+        {
+            int ultimoIdx = colaCancionesPartida.Count - 1;
+            (colaCancionesPartida[0], colaCancionesPartida[ultimoIdx]) = (colaCancionesPartida[ultimoIdx], colaCancionesPartida[0]);
+        }
+
+        indiceCancionPartida = 0;
+    }
+
+    private bool EsPistaPartida(string nombre)
+    {
+        if (string.IsNullOrEmpty(nombre)) return false;
+        for (int i = 0; i < PistasPartida.Length; i++)
+        {
+            if (PistasPartida[i] == nombre) return true;
+        }
+        return false;
     }
 
     private AudioSource NuevaFuente(bool bucle)
@@ -176,10 +256,42 @@ public class GestorSonido : MonoBehaviour
         return "amb_menu";
     }
 
-    // Durante toda la partida suena Throttle_Locked_Open en bucle continuo; en menú y pantalla final suena musica_menu
+    // En menú/carga suena la canción de Black Ops 2 Zombies; en partida suena la cola aleatoria (Phonk, Electro cumbia, Trap)
     private string PistaDe(string mapa)
     {
-        if (mapa == null) return "musica_menu";
+        if (mapa == null)
+        {
+            estabaEnPartida = false;
+            return clips.ContainsKey(PistaMenuLobby) ? PistaMenuLobby : "musica_menu";
+        }
+
+        if (!estabaEnPartida || colaCancionesPartida.Count == 0)
+        {
+            estabaEnPartida = true;
+            BarajarColaPartida();
+        }
+        else if (musicaActual != null && EsPistaPartida(pistaActual))
+        {
+            // Si la canción actual de la partida terminó o está a punto de terminar, pasar a la siguiente de la cola
+            bool termino = !musicaActual.isPlaying
+                || (musicaActual.clip != null && musicaActual.time >= musicaActual.clip.length - 0.6f);
+
+            if (termino && colaCancionesPartida.Count > 0)
+            {
+                indiceCancionPartida++;
+                if (indiceCancionPartida >= colaCancionesPartida.Count)
+                {
+                    BarajarColaPartida();
+                }
+            }
+        }
+
+        if (colaCancionesPartida.Count > 0)
+        {
+            int idx = Mathf.Clamp(indiceCancionPartida, 0, colaCancionesPartida.Count - 1);
+            return colaCancionesPartida[idx];
+        }
+
         if (clips.ContainsKey(PistaPartidaPrincipal)) return PistaPartidaPrincipal;
 
         if (mapa.Contains("cochera")) return "musica_juego1";
@@ -195,9 +307,10 @@ public class GestorSonido : MonoBehaviour
         if (!clips.TryGetValue(nombre, out AudioClip clip)) return actual;
         AudioSource nueva = actual == a ? b : a;
         nueva.clip = clip;
-        nueva.loop = true;
+        // Las pistas de la cola de partida no hacen loop individual para encadenar hacia la siguiente pista aleatoria
+        nueva.loop = !EsPistaPartida(nombre);
         nueva.time = 0f;
-        nueva.volume = (nombre == PistaPartidaPrincipal && musicaActiva) ? VolumenMusicaPartidaInicial : 0f;
+        nueva.volume = (EsPistaPartida(nombre) && musicaActiva) ? VolumenMusicaPartidaInicial : 0f;
         nueva.Play();
         return nueva;
     }
@@ -213,7 +326,7 @@ public class GestorSonido : MonoBehaviour
             return;
         }
 
-        bool esCancionPartida = pistaActual == PistaPartidaPrincipal;
+        bool esCancionPartida = EsPistaPartida(pistaActual);
         float objetivo = esCancionPartida ? VolumenMusicaPartidaObjetivo : VolumenMusicaMenu;
         float pasoSubida = esCancionPartida
             ? ((VolumenMusicaPartidaObjetivo - VolumenMusicaPartidaInicial) / TiempoSubidaMusicaPartida) * Time.unscaledDeltaTime

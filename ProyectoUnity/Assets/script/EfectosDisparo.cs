@@ -27,10 +27,30 @@ public class EfectosDisparo : MonoBehaviour
             destello = new Color(1f, 0.85f, 0.25f), chispa = new Color(1f, 0.7f, 0.15f),
             tamano = 0.34f, texto = "¡BAP!", sacudida = 0.03f, retroceso = 0.07f, casquillo = true
         };
-        if (n.Contains("barret"))
+        if (n.Contains("antitanq"))
+        {
+            p.tamano = 0.72f; p.texto = "¡KABOOM!"; p.sacudida = 0.18f; p.retroceso = 0.22f;
+            p.destello = new Color(1f, 0.5f, 0.1f); p.chispa = new Color(1f, 0.35f, 0.05f);
+        }
+        else if (n.Contains("barret"))
         {
             p.tamano = 0.6f; p.texto = "¡BOOM!"; p.sacudida = 0.13f; p.retroceso = 0.16f;
             p.destello = new Color(1f, 0.6f, 0.15f); p.chispa = new Color(1f, 0.45f, 0.1f);
+        }
+        else if (n.Contains("escopeta"))
+        {
+            p.tamano = 0.52f; p.texto = "¡BLAM!"; p.sacudida = 0.11f; p.retroceso = 0.14f;
+            p.destello = new Color(1f, 0.72f, 0.2f); p.chispa = new Color(1f, 0.55f, 0.15f);
+        }
+        else if (n.Contains("machete"))
+        {
+            p.tamano = 0.38f; p.texto = "¡SLASH!"; p.sacudida = 0.04f; p.retroceso = 0.05f; p.casquillo = false;
+            p.destello = new Color(0.85f, 0.95f, 1f); p.chispa = new Color(0.7f, 0.9f, 1f);
+        }
+        else if (n.Contains("escudo"))
+        {
+            p.tamano = 0.4f; p.texto = "¡CLANG!"; p.sacudida = 0.08f; p.retroceso = 0.06f; p.casquillo = false;
+            p.destello = new Color(0.95f, 0.85f, 0.45f); p.chispa = new Color(1f, 0.9f, 0.5f);
         }
         else if (n.Contains("mac"))
         {
@@ -240,9 +260,46 @@ public class EfectosDisparo : MonoBehaviour
         if (arma != null && arma.Modo == ModoDisparo.RayoContinuo && arma.TieneAudioPersonalizadoRayo)
             return;
 
-        string nombre = "disparo_" + (arma != null ? arma.name.ToLowerInvariant() : "ak47");
-        if (!Sonidos.Existe(nombre)) nombre = "disparo_ak47";
-        Sonidos.Reproducir(nombre, posicion, 0.9f);
+        string n = arma != null ? arma.name.ToLowerInvariant() : "ak47";
+        float tono = 1f;
+        string clave = "disparo_" + n;
+
+        if (n.Contains("antitanq"))
+        {
+            clave = "disparo_antitanques";
+            tono = 0.85f;
+        }
+        else if (n.Contains("barret"))
+        {
+            clave = "disparo_barret";
+        }
+        else if (n.Contains("escopeta"))
+        {
+            clave = "disparo_escopeta";
+            tono = 0.80f;
+            Sonidos.Reproducir("disparo_bereta", posicion, 0.65f, 0.72f);
+        }
+        else if (n.Contains("mac"))
+        {
+            clave = "disparo_mac10";
+        }
+        else if (n.Contains("ber"))
+        {
+            clave = "disparo_bereta";
+        }
+        else if (n.Contains("machete"))
+        {
+            Sonidos.Reproducir("deslizar", posicion, 0.9f, 1.35f);
+            return;
+        }
+        else if (n.Contains("escudo"))
+        {
+            Sonidos.Reproducir("clank", posicion, 0.95f, 0.85f);
+            return;
+        }
+
+        if (!Sonidos.Existe(clave)) clave = "disparo_ak47";
+        Sonidos.Reproducir(clave, posicion, 0.92f, tono);
     }
 
     private static void Emitir(ParticleSystem ps, Vector3 pos, Vector3 vel, Color color, float tamano, float vida)
