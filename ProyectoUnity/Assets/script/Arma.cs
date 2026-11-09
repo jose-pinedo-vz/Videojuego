@@ -1434,16 +1434,9 @@ public class Arma : MonoBehaviour
             ? jugadorQueLaEquipo.DireccionHorizontal
             : (transform.right.x >= 0f ? 1f : -1f);
 
-<<<<<<< HEAD
         // Pegado de frente a una pared: el disparo sale hacia arriba en vez de hacia adelante
         bool haciaArriba = PegadoAPared();
-        Vector3 direccionDisparo = haciaArriba
-            ? new Vector3(Random.Range(-Dispersion, Dispersion) * 0.1f, 1f, 0f).normalized
-            : new Vector3(dirX, Random.Range(-Dispersion, Dispersion) * 0.1f, 0f).normalized;
-        Debug.Log("direccionDisparo: " + direccionDisparo);
 
-=======
->>>>>>> 8a2b0cbb60e1811128d6357d53976f90144536d9
         // Punto visual de salida en la boca del arma
         Vector3 inicioTrazo = transform.position;
         Bounds b = ObtenerBoundsArma();
@@ -1464,23 +1457,27 @@ public class Arma : MonoBehaviour
 
         int numRayos = Mathf.Max(1, perdigonesPorDisparo);
         HashSet<Personaje> golpeadosEnEsteDisparo = new HashSet<Personaje>();
-        Vector3 finTrazoPrincipal = inicioTrazo + new Vector3(dirX * Alcance, 0f, 0f);
+        Vector3 finTrazoPrincipal = haciaArriba
+            ? (inicioTrazo + new Vector3(0f, Alcance, 0f))
+            : (inicioTrazo + new Vector3(dirX * Alcance, 0f, 0f));
 
         for (int i = 0; i < numRayos; i++)
         {
-            float spreadY;
+            float spread;
             if (numRayos > 1)
             {
                 // Abanico amplio para la escopeta + ligera variacion aleatoria
                 float t = (i / (float)(numRayos - 1)) - 0.5f; // -0.5 .. +0.5
-                spreadY = (t * Dispersion * 0.24f) + Random.Range(-Dispersion, Dispersion) * 0.03f;
+                spread = (t * Dispersion * 0.24f) + Random.Range(-Dispersion, Dispersion) * 0.03f;
             }
             else
             {
-                spreadY = Random.Range(-Dispersion, Dispersion) * 0.1f;
+                spread = Random.Range(-Dispersion, Dispersion) * 0.1f;
             }
 
-            Vector3 direccionDisparo = new Vector3(dirX, spreadY, 0f).normalized;
+            Vector3 direccionDisparo = haciaArriba
+                ? new Vector3(spread, 1f, 0f).normalized
+                : new Vector3(dirX, spread, 0f).normalized;
             Debug.DrawRay(origen, direccionDisparo * Alcance, Color.red, 2f);
 
             // Ignoramos triggers, colliders que envuelven el origen (distancia ~0, como Cochera convexa) y al propio tirador
