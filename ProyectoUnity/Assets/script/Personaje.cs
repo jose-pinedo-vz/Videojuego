@@ -34,10 +34,28 @@ public class Personaje : NetworkBehaviour
     protected Vector3 posicionInicial;
     protected Vector3 ultimaPosicionSegura; // ultimo punto donde estuvo pisando suelo, para recuperarse de una caida
 
-    // Estados de empuje (Escudo Troyano) y resbalon (Cascara de Platano)
+    // Estados de empuje (Escudo Troyano / retroceso de disparo) y resbalon ragdoll (Cascara de Platano)
     private Vector3 velocidadEmpuje;
-    private float tiempoFinResbalonPlatano;
-    public bool EstaResbalandoPlatano => Time.time < tiempoFinResbalonPlatano;
+    public bool EstaResbalandoPlatano => EnRagdoll;
+
+    // Almacen de cargador extra en el personaje (maximo 1 universal; se conserva al soltar/cambiar arma y se pierde al morir)
+    public const int MAX_CARGADORES_EXTRA = 1;
+    private int cargadoresExtra = 0;
+    public int CargadoresExtra => cargadoresExtra;
+    public bool PuedeGuardarCargadorExtra() => !muriendo && cargadoresExtra < MAX_CARGADORES_EXTRA;
+    public bool AgregarCargadorExtra()
+    {
+        if (!PuedeGuardarCargadorExtra()) return false;
+        cargadoresExtra = MAX_CARGADORES_EXTRA;
+        return true;
+    }
+    public bool ConsumirCargadorExtra()
+    {
+        if (cargadoresExtra <= 0) return false;
+        cargadoresExtra--;
+        return true;
+    }
+    public void LimpiarCargadoresExtra() => cargadoresExtra = 0;
 
     // al aparecer en un mapa se espera un momento a que sus colliders esten listos y se revisa que el spawn tenga piso
     private bool revisarSpawnPendiente = false;
@@ -521,6 +539,46 @@ public class Personaje : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// Retroceso fisico hacia atras al disparar armas pesadas o automaticas (AK-47, Barret, Antitanques).
+    /// </summary>
+    public void RecibirRetrocesoDisparo(float fuerzaHorizontal, float fuerzaVertical)
+    {
+        if (IsSpawned && !IsOwner) return;
+        float dirAtras = -DireccionHorizontal;
+        velocidadEmpuje.x = Mathf.Clamp(velocidadEmpuje.x + dirAtras * fuerzaHorizontal, -16f, 16f);
+        if (fuerzaVertical > 0f)
+        {
+            if (controlador != null && controlador.isGrounded)
+                velocidadCaida.y = Mathf.Max(velocidadCaida.y, fuerzaVertical);
+            else
+                velocidadCaida.y = Mathf.Clamp(velocidadCaida.y + fuerzaVertical * 0.45f, -30f, 12f);
+        }
+    }
+
+    public void NotificarCambioMunicionRed(Arma arma)
+    {
+        if (arma == null || !IsSpawned || !IsOwner) return;
+        SincronizarMunicionArmaRpc(arma.gameObject.name, arma.MunicionCruda, arma.DuracionBateriaActual);
+    }
+
+    [Rpc(SendTo.NotMe)]
+    public void SincronizarMunicionArmaRpc(string nombreArma, int municion, float bateria)
+    {
+        if (GestorArmas.Instancia == null) return;
+        Arma arma = GestorArmas.Instancia.BuscarArma(nombreArma);
+        if (arma != null)
+        {
+            arma.EstablecerEstadoMunicion(municion, bateria);
+        }
+    }
+
+    [Rpc(SendTo.Owner)]
+    public void ReiniciarCargadoresNuevaPartidaRpc()
+    {
+        LimpiarCargadoresExtra();
+    }
+
     // Pisar una cascara: explosion pequena que lo tira y lo deja como muñeco de plastilina (ragdoll) unos segundos.
     // No quita vida, no es mortal.
     private RagdollPlastilina ragdoll;
@@ -745,6 +803,8 @@ public class Personaje : NetworkBehaviour
         muriendo = true;
         if (EnRagdoll) ragdoll.Terminar(false); // si moria en pleno ragdoll, primero se arma el cuerpo de nuevo
         velocidadCaida = Vector3.zero;
+        velocidadEmpuje = Vector3.zero;
+        LimpiarCargadoresExtra();
 
         // Soltar el arma justo donde muere, antes de desaparecer
         if (armaEquipada != null) armaEquipada.SoltarVoluntariamente();

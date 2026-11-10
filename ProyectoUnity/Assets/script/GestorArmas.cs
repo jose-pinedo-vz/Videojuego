@@ -8,25 +8,38 @@ using System.Collections.Generic;
 // Máximo maxArmasActivas armas visibles a la vez, elegidas aleatoriamente al iniciar partida.
 public class GestorArmas : NetworkBehaviour
 {
+    private const int MAX_CAJAS_MUNICION_MAPA = 3;
+    private const int COPIAS_POR_ARMA = 2;
+
     [Header("Configuración")]
-    [Tooltip("Cuántas armas pueden estar en el suelo al mismo tiempo")]
+    [Tooltip("Cuántas cajas de armas pueden aparecer inicialmente al mismo tiempo")]
     [SerializeField] private int maxArmasActivas = 6;
-    [Tooltip("Cuántas cajas de munición aparecen simultáneamente en el mapa")]
-    [SerializeField] private int maxCajasMunicionActivas = 3;
+    [Tooltip("Segundos que tarda un arma tirada en el suelo en despawnear si nadie la recoge")]
+    [SerializeField] private float tiempoDespawnArmaSuelo = 15f;
+    [Tooltip("Segundos que tarda en volver a aparecer una caja de armas en un spawn ya abierto")]
+    [SerializeField] private float tiempoReaparicionCajaArma = 18f;
+    [Tooltip("Cuántas cajas de munición aparecen simultáneamente en el mapa (máximo estricto: 3)")]
+    [SerializeField] private int limiteCajasMunicionMapa = 3;
     [Tooltip("Segundos que tarda una caja de munición en reaparecer en otra ubicación")]
-    [SerializeField] private float tiempoReaparicionMunicion = 12f;
+    [SerializeField] private float segundosRespawnMunicion = 18f;
 
     [Header("Armas disponibles — arrastrar todas las que haya en la escena")]
     [SerializeField] private Arma[] todasLasArmas;
 
-    // spawn que le tocó a cada arma en esta partida
+    // spawn que le tocó a cada arma en esta partida y seguimiento de spawns de cajas abiertas
     private Dictionary<string, Vector3> spawnAsignado = new Dictionary<string, Vector3>();
+    private readonly List<Vector3> spawnsArmasRonda = new List<Vector3>();
+    private readonly Dictionary<string, int> spawnOrigenDeArma = new Dictionary<string, int>();
+    private readonly Dictionary<int, string> armaEnSpawn = new Dictionary<int, string>();
+    private GameObject mapaActualRonda;
+    private bool armasConfiguradas = false;
 
     // Cajas de municion activas y sus puntos posibles en el mapa actual
     private readonly List<CajaMunicion> cajasMunicion = new List<CajaMunicion>();
     private readonly List<Vector3> puntosMunicionMapa = new List<Vector3>();
 
     public static GestorArmas Instancia { get; private set; }
+    public float TiempoDespawnArmaSuelo => tiempoDespawnArmaSuelo;
 
     private struct ConfigModeloArma
     {
@@ -42,25 +55,27 @@ public class GestorArmas : NetworkBehaviour
         public ModoDisparo modo;
         public float ralentizacion;
         public int perdigones;
+        public float retrocesoH;
+        public float retrocesoV;
         public System.Type tipoScript;
     }
 
     private static readonly ConfigModeloArma[] CONFIG_MODELOS = new ConfigModeloArma[]
     {
-        // Armas originales
-        new ConfigModeloArma { nombre = "ak47",        rutaFbx = "Assets/Modelos/ak/ak47.fbx",                 escala = new Vector3(0.20f, 0.20f, 0.20f),    rotacionEuler = Vector3.zero,                cadencia = 9.5f,  alcance = 7.5f,  dispersion = 2.5f, municionMax = 20, tiempoRecarga = 1.8f, modo = ModoDisparo.Automatico,     ralentizacion = 0f,    perdigones = 1, tipoScript = typeof(Arma) },
-        new ConfigModeloArma { nombre = "barret",      rutaFbx = "Assets/Modelos/barret/barret.fbx",           escala = new Vector3(0.19f, 0.19f, 0.19f),    rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 1.5f,  alcance = 15f,   dispersion = 0.1f, municionMax = 5,  tiempoRecarga = 2.5f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, tipoScript = typeof(Arma) },
-        new ConfigModeloArma { nombre = "mac10",       rutaFbx = "Assets/Modelos/mac10/mac10.fbx",             escala = new Vector3(0.115f, 0.115f, 0.115f), rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 16f,   alcance = 4.0f,  dispersion = 0.5f, municionMax = 15, tiempoRecarga = 1.3f, modo = ModoDisparo.Automatico,     ralentizacion = 0f,    perdigones = 1, tipoScript = typeof(Arma) },
-        new ConfigModeloArma { nombre = "bereta",      rutaFbx = "Assets/Modelos/bereta/bereta.fbx",           escala = new Vector3(0.125f, 0.125f, 0.125f), rotacionEuler = new Vector3(0f, 180f, 0f),   cadencia = 5f,    alcance = 5.5f,  dispersion = 0.8f, municionMax = 12, tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, tipoScript = typeof(Arma) },
-        new ConfigModeloArma { nombre = "raygun",      rutaFbx = "Assets/Modelos/raygun/raygun.fbx",           escala = new Vector3(0.046f, 0.046f, 0.046f), rotacionEuler = new Vector3(90f, 180f, 0f),  cadencia = 20f,   alcance = 80f,   dispersion = 0.0f, municionMax = 10, tiempoRecarga = 2.0f, modo = ModoDisparo.RayoContinuo,   ralentizacion = 0f,    perdigones = 1, tipoScript = typeof(Arma) },
+        // Armas originales (AK-47 balanceada: menos dispersion, menor cadencia y retroceso fisico)
+        new ConfigModeloArma { nombre = "ak47",        rutaFbx = "Assets/Modelos/ak/ak47.fbx",                 escala = new Vector3(0.20f, 0.20f, 0.20f),    rotacionEuler = Vector3.zero,                cadencia = 6.8f,  alcance = 7.5f,  dispersion = 1.2f, municionMax = 18, tiempoRecarga = 1.8f, modo = ModoDisparo.Automatico,     ralentizacion = 0f,    perdigones = 1, retrocesoH = 3.2f,  retrocesoV = 0.0f, tipoScript = typeof(Arma) },
+        new ConfigModeloArma { nombre = "barret",      rutaFbx = "Assets/Modelos/barret/barret.fbx",           escala = new Vector3(0.19f, 0.19f, 0.19f),    rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 1.5f,  alcance = 15f,   dispersion = 0.1f, municionMax = 5,  tiempoRecarga = 2.5f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 9.5f,  retrocesoV = 0.8f, tipoScript = typeof(Arma) },
+        new ConfigModeloArma { nombre = "mac10",       rutaFbx = "Assets/Modelos/mac10/mac10.fbx",             escala = new Vector3(0.115f, 0.115f, 0.115f), rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 16f,   alcance = 4.0f,  dispersion = 0.5f, municionMax = 30, tiempoRecarga = 1.3f, modo = ModoDisparo.Automatico,     ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(Arma) },
+        new ConfigModeloArma { nombre = "bereta",      rutaFbx = "Assets/Modelos/bereta/bereta.fbx",           escala = new Vector3(0.125f, 0.125f, 0.125f), rotacionEuler = new Vector3(0f, 180f, 0f),   cadencia = 5f,    alcance = 5.5f,  dispersion = 0.8f, municionMax = 12, tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(Arma) },
+        new ConfigModeloArma { nombre = "raygun",      rutaFbx = "Assets/Modelos/raygun/raygun.fbx",           escala = new Vector3(0.046f, 0.046f, 0.046f), rotacionEuler = new Vector3(90f, 180f, 0f),  cadencia = 20f,   alcance = 80f,   dispersion = 0.0f, municionMax = 5,  tiempoRecarga = 2.0f, modo = ModoDisparo.RayoContinuo,   ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(Arma) },
 
-        // 6 Armas nuevas
-        new ConfigModeloArma { nombre = "machete",     rutaFbx = "Assets/Modelos/machete/machete.fbx",         escala = Vector3.one,                         rotacionEuler = Vector3.zero,                cadencia = 3.6f,  alcance = 2.45f, dispersion = 0.0f, municionMax = 0,  tiempoRecarga = 0.0f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, tipoScript = typeof(ArmaMachete) },
-        new ConfigModeloArma { nombre = "antitanques", rutaFbx = "Assets/Modelos/Antitanques/antitanques.fbx", escala = new Vector3(0.19f, 0.19f, 0.19f),    rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 0.7f,  alcance = 20f,   dispersion = 0.0f, municionMax = 3,  tiempoRecarga = 3.0f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0.38f, perdigones = 1, tipoScript = typeof(Arma) },
-        new ConfigModeloArma { nombre = "barreno",     rutaFbx = "Assets/Modelos/barreno/barreno.fbx",         escala = new Vector3(0.08f, 0.08f, 0.08f),    rotacionEuler = Vector3.zero,                cadencia = 1.4f,  alcance = 9.0f,  dispersion = 0.0f, municionMax = 3,  tiempoRecarga = 1.6f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, tipoScript = typeof(ArmaBarreno) },
-        new ConfigModeloArma { nombre = "escudo",      rutaFbx = "Assets/Modelos/escudo/escudo.fbx",           escala = new Vector3(0.15f, 0.15f, 0.15f),    rotacionEuler = Vector3.zero,                cadencia = 2.0f,  alcance = 2.25f, dispersion = 0.0f, municionMax = 0,  tiempoRecarga = 0.0f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, tipoScript = typeof(ArmaEscudo) },
-        new ConfigModeloArma { nombre = "platanos",    rutaFbx = "Assets/Modelos/platanos/penca.fbx",          escala = Vector3.one,                         rotacionEuler = Vector3.zero,                cadencia = 2.2f,  alcance = 6.5f,  dispersion = 0.0f, municionMax = 5,  tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, tipoScript = typeof(ArmaPlatanos) },
-        new ConfigModeloArma { nombre = "escopeta",    rutaFbx = "Assets/Modelos/escopeta/escopeta.fbx",       escala = new Vector3(0.17f, 0.17f, 0.17f),    rotacionEuler = Vector3.zero,                cadencia = 1.15f, alcance = 6.2f,  dispersion = 9.0f, municionMax = 5,  tiempoRecarga = 2.2f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 6, tipoScript = typeof(Arma) },
+        // 6 Armas nuevas (Antitanques con empuje fisico exagerado)
+        new ConfigModeloArma { nombre = "machete",     rutaFbx = "Assets/Modelos/machete/machete.fbx",         escala = Vector3.one,                         rotacionEuler = Vector3.zero,                cadencia = 3.6f,  alcance = 2.45f, dispersion = 0.0f, municionMax = 0,  tiempoRecarga = 0.0f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(ArmaMachete) },
+        new ConfigModeloArma { nombre = "antitanques", rutaFbx = "Assets/Modelos/Antitanques/antitanques.fbx", escala = new Vector3(0.19f, 0.19f, 0.19f),    rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 0.7f,  alcance = 20f,   dispersion = 0.0f, municionMax = 3,  tiempoRecarga = 3.0f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0.38f, perdigones = 1, retrocesoH = 13.0f, retrocesoV = 2.4f, tipoScript = typeof(Arma) },
+        new ConfigModeloArma { nombre = "barreno",     rutaFbx = "Assets/Modelos/barreno/barreno.fbx",         escala = new Vector3(0.08f, 0.08f, 0.08f),    rotacionEuler = Vector3.zero,                cadencia = 1.4f,  alcance = 9.0f,  dispersion = 0.0f, municionMax = 3,  tiempoRecarga = 1.6f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(ArmaBarreno) },
+        new ConfigModeloArma { nombre = "escudo",      rutaFbx = "Assets/Modelos/escudo/escudo.fbx",           escala = new Vector3(0.15f, 0.15f, 0.15f),    rotacionEuler = Vector3.zero,                cadencia = 2.0f,  alcance = 2.25f, dispersion = 0.0f, municionMax = 0,  tiempoRecarga = 0.0f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(ArmaEscudo) },
+        new ConfigModeloArma { nombre = "platanos",    rutaFbx = "Assets/Modelos/platanos/penca.fbx",          escala = Vector3.one,                         rotacionEuler = Vector3.zero,                cadencia = 2.2f,  alcance = 6.5f,  dispersion = 0.0f, municionMax = 5,  tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(ArmaPlatanos) },
+        new ConfigModeloArma { nombre = "escopeta",    rutaFbx = "Assets/Modelos/escopeta/escopeta.fbx",       escala = new Vector3(0.17f, 0.17f, 0.17f),    rotacionEuler = Vector3.zero,                cadencia = 1.15f, alcance = 6.2f,  dispersion = 9.0f, municionMax = 5,  tiempoRecarga = 2.2f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 6, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(Arma) },
     };
 
     private static readonly Vector3[] SPAWNS_COCHERA_POSTER = new Vector3[]
@@ -130,7 +145,11 @@ public class GestorArmas : NetworkBehaviour
 
     private void AsegurarListaArmas()
     {
-        ConfigurarArmasEnEscena();
+        if (!armasConfiguradas)
+        {
+            armasConfiguradas = true;
+            ConfigurarArmasEnEscena();
+        }
 
         List<Arma> encontradas = new List<Arma>();
         foreach (Arma a in FindObjectsByType<Arma>(FindObjectsInactive.Include, FindObjectsSortMode.None))
@@ -150,75 +169,93 @@ public class GestorArmas : NetworkBehaviour
         for (int i = 0; i < CONFIG_MODELOS.Length; i++)
         {
             ConfigModeloArma cfg = CONFIG_MODELOS[i];
-            GameObject objArma = BuscarObjetoArmaEnEscena(cfg.nombre);
+            GameObject objBase = BuscarObjetoArmaEnEscena(cfg.nombre);
+
+            for (int copia = 0; copia < COPIAS_POR_ARMA; copia++)
+            {
+                string nombreInstancia = copia == 0 ? cfg.nombre : $"{cfg.nombre}_{copia + 1}";
+                GameObject objArma = copia == 0 ? objBase : BuscarObjetoArmaEnEscena(nombreInstancia);
 
 #if UNITY_EDITOR
-            if (objArma == null)
-            {
-                GameObject prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(cfg.rutaFbx);
-                if (prefab != null)
+                if (objArma == null)
                 {
-                    objArma = Instantiate(prefab);
-                    objArma.name = cfg.nombre;
+                    GameObject prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(cfg.rutaFbx);
+                    if (prefab != null)
+                    {
+                        objArma = Instantiate(prefab);
+                        objArma.name = nombreInstancia;
+                        objArma.transform.localScale = cfg.escala;
+                        objArma.transform.rotation = Quaternion.Euler(cfg.rotacionEuler);
+                    }
+                }
+#endif
+                if (objArma == null && copia > 0 && objBase != null)
+                {
+                    objArma = Instantiate(objBase);
+                    objArma.name = nombreInstancia;
+                    Transform cajaDuplicada = objArma.transform.Find("CajaMaderaVisual");
+                    if (cajaDuplicada != null) DestroyImmediate(cajaDuplicada.gameObject);
+                }
+
+                if (objArma == null)
+                {
+                    objArma = new GameObject(nombreInstancia);
                     objArma.transform.localScale = cfg.escala;
                     objArma.transform.rotation = Quaternion.Euler(cfg.rotacionEuler);
                 }
-            }
-#endif
-            if (objArma == null)
-            {
-                objArma = new GameObject(cfg.nombre);
-                objArma.transform.localScale = cfg.escala;
-                objArma.transform.rotation = Quaternion.Euler(cfg.rotacionEuler);
-            }
 
-            if (objArma != null)
-            {
-                objArma.name = cfg.nombre;
-                if (objArma.transform.parent == null)
+                if (objArma != null)
                 {
-                    objArma.transform.localScale = cfg.escala;
-                    objArma.transform.rotation = Quaternion.Euler(cfg.rotacionEuler);
-                }
+                    objArma.name = nombreInstancia;
+                    if (copia == 0 && objBase == null) objBase = objArma;
 
-                BoxCollider box = objArma.GetComponent<BoxCollider>();
-                if (box == null) box = objArma.AddComponent<BoxCollider>();
-                box.isTrigger = true;
+                    if (objArma.transform.parent == null)
+                    {
+                        objArma.transform.localScale = cfg.escala;
+                        objArma.transform.rotation = Quaternion.Euler(cfg.rotacionEuler);
+                    }
 
-                LineRenderer lr = objArma.GetComponent<LineRenderer>();
-                if (lr == null) lr = objArma.AddComponent<LineRenderer>();
-                lr.enabled = false;
-                lr.startWidth = 0.05f;
-                lr.endWidth = 0.05f;
-                lr.useWorldSpace = true;
+                    BoxCollider box = objArma.GetComponent<BoxCollider>();
+                    if (box == null) box = objArma.AddComponent<BoxCollider>();
+                    box.isTrigger = true;
+
+                    LineRenderer lr = objArma.GetComponent<LineRenderer>();
+                    if (lr == null) lr = objArma.AddComponent<LineRenderer>();
+                    lr.enabled = false;
+                    lr.startWidth = 0.05f;
+                    lr.endWidth = 0.05f;
+                    lr.useWorldSpace = true;
 #if UNITY_EDITOR
-                Material matTrazo = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/trazo.mat");
-                if (matTrazo != null) lr.sharedMaterial = matTrazo;
+                    Material matTrazo = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/trazo.mat");
+                    if (matTrazo != null) lr.sharedMaterial = matTrazo;
 #endif
 
-                System.Type tipoRequerido = cfg.tipoScript ?? typeof(Arma);
-                Arma scriptArma = objArma.GetComponent<Arma>();
-                if (scriptArma != null && scriptArma.GetType() != tipoRequerido)
-                {
-                    DestroyImmediate(scriptArma);
-                    scriptArma = null;
-                }
-                if (scriptArma == null)
-                {
-                    scriptArma = (Arma)objArma.AddComponent(tipoRequerido);
-                }
+                    System.Type tipoRequerido = cfg.tipoScript ?? typeof(Arma);
+                    Arma scriptArma = objArma.GetComponent<Arma>();
+                    if (scriptArma != null && scriptArma.GetType() != tipoRequerido)
+                    {
+                        DestroyImmediate(scriptArma);
+                        scriptArma = null;
+                    }
+                    if (scriptArma == null)
+                    {
+                        scriptArma = (Arma)objArma.AddComponent(tipoRequerido);
+                    }
 
-                scriptArma.ConfigurarDatosArma(
-                    cfg.cadencia,
-                    cfg.alcance,
-                    cfg.municionMax,
-                    cfg.tiempoRecarga,
-                    cfg.modo,
-                    cfg.dispersion,
-                    cfg.ralentizacion,
-                    cfg.perdigones
-                );
-                scriptArma.RecalibrarModeloVisual();
+                    scriptArma.ConfigurarDatosArma(
+                        cfg.cadencia,
+                        cfg.alcance,
+                        cfg.municionMax,
+                        cfg.tiempoRecarga,
+                        cfg.modo,
+                        cfg.dispersion,
+                        cfg.ralentizacion,
+                        cfg.perdigones,
+                        cfg.retrocesoH,
+                        cfg.retrocesoV
+                    );
+                    scriptArma.RecalibrarModeloVisual();
+                }
             }
         }
     }
@@ -243,6 +280,7 @@ public class GestorArmas : NetworkBehaviour
     public List<Transform> ObtenerOCrearSpawnsEnMapa(GameObject mapa)
     {
         if (mapa == null) return ObtenerOCrearSpawnsEnEscena();
+        mapaActualRonda = mapa;
 
         List<Transform> puntos = GameManager.BuscarPuntos(mapa, GameManager.PREFIJO_ARMA);
         if (puntos.Count > 0) return puntos;
@@ -398,11 +436,55 @@ public class GestorArmas : NetworkBehaviour
         return puntos;
     }
 
+    private static string NombreBaseArma(string nombre)
+    {
+        if (string.IsNullOrEmpty(nombre)) return "";
+        int idx = nombre.LastIndexOf('_');
+        if (idx > 0 && idx < nombre.Length - 1 && int.TryParse(nombre.Substring(idx + 1), out _))
+        {
+            return nombre.Substring(0, idx).ToLowerInvariant();
+        }
+        return nombre.ToLowerInvariant();
+    }
+
+    private List<Arma> SeleccionarArmasDistintasParaInicio(int cantidad)
+    {
+        List<Arma> todasMezcladas = new List<Arma>();
+        foreach (Arma a in todasLasArmas)
+        {
+            if (a != null) todasMezcladas.Add(a);
+        }
+        Mezclar(todasMezcladas);
+
+        List<Arma> seleccion = new List<Arma>();
+        HashSet<string> tiposUsados = new HashSet<string>();
+
+        foreach (Arma a in todasMezcladas)
+        {
+            if (seleccion.Count >= cantidad) break;
+            string tipoBase = NombreBaseArma(a.gameObject.name);
+            if (tiposUsados.Add(tipoBase))
+            {
+                seleccion.Add(a);
+            }
+        }
+
+        // Respaldo si hubiera mas spawns que tipos distintos
+        foreach (Arma a in todasMezcladas)
+        {
+            if (seleccion.Count >= cantidad) break;
+            if (!seleccion.Contains(a))
+                seleccion.Add(a);
+        }
+        return seleccion;
+    }
+
     // Llamado por GameManager.iniciarPartida() en el servidor, con los spawnArma del mapa elegido
     public void IniciarRondaArmas(List<Transform> spawns)
     {
         if (!EsServidor()) return;
 
+        StopAllCoroutines();
         AsegurarListaArmas();
 
         if (spawns == null || spawns.Count == 0)
@@ -410,27 +492,35 @@ public class GestorArmas : NetworkBehaviour
             spawns = ObtenerOCrearSpawnsEnEscena();
         }
 
-        // Ocultar todas, en todos los clientes
+        // Ocultar todas al iniciar nueva ronda/mapa, en todos los clientes
         foreach (Arma a in todasLasArmas)
-            if (a != null) EnviarActualizacionArma(a.gameObject.name, a.transform.position, false, true);
+            if (a != null) EnviarActualizacionArma(a.gameObject.name, a.transform.position, false, true, a.MunicionMaxima, a.DuracionBateriaMaxima, false);
 
         spawnAsignado.Clear();
+        spawnsArmasRonda.Clear();
+        spawnOrigenDeArma.Clear();
+        armaEnSpawn.Clear();
 
-        // Mezclar armas y spawns para aleatoriedad por partida
-        List<Arma> disponibles = new List<Arma>(todasLasArmas);
         List<Transform> spawnsMezclados = new List<Transform>(spawns);
-        Mezclar(disponibles);
         Mezclar(spawnsMezclados);
-
-        int cantidad = Mathf.Min(maxArmasActivas, disponibles.Count, spawnsMezclados.Count);
-        for (int i = 0; i < cantidad; i++)
+        foreach (Transform sp in spawnsMezclados)
         {
-            if (disponibles[i] == null || spawnsMezclados[i] == null) continue;
-            string nombre = disponibles[i].gameObject.name;
-            Vector3 pos   = spawnsMezclados[i].position;
+            if (sp != null) spawnsArmasRonda.Add(sp.position);
+        }
+
+        int cantidad = Mathf.Min(maxArmasActivas, spawnsArmasRonda.Count, todasLasArmas.Length);
+        List<Arma> elegidas = SeleccionarArmasDistintasParaInicio(cantidad);
+
+        for (int i = 0; i < elegidas.Count && i < spawnsArmasRonda.Count; i++)
+        {
+            Arma arma = elegidas[i];
+            if (arma == null) continue;
+            string nombre = arma.gameObject.name;
+            Vector3 pos = spawnsArmasRonda[i];
             spawnAsignado[nombre] = pos;
-            // Decirle a todos los clientes que activen esta arma en esa posición dentro de su caja de madera
-            EnviarActualizacionArma(nombre, pos, true, true);
+            spawnOrigenDeArma[nombre] = i;
+            armaEnSpawn[i] = nombre;
+            EnviarActualizacionArma(nombre, pos, true, true, arma.MunicionMaxima, arma.DuracionBateriaMaxima, true);
         }
 
         IniciarCajasMunicion(spawns, true);
@@ -439,58 +529,172 @@ public class GestorArmas : NetworkBehaviour
     // Versión local para escenas de prueba sin servidor de red
     public void IniciarRondaArmasLocal(List<Transform> spawns)
     {
+        StopAllCoroutines();
         AsegurarListaArmas();
         if (spawns == null || spawns.Count == 0) return;
 
         foreach (Arma a in todasLasArmas)
-            if (a != null) AplicarEstadoArmaLocal(a, a.transform.position, false, true);
+            if (a != null) AplicarEstadoArmaLocal(a, a.transform.position, false, true, a.MunicionMaxima, a.DuracionBateriaMaxima, false);
 
         spawnAsignado.Clear();
+        spawnsArmasRonda.Clear();
+        spawnOrigenDeArma.Clear();
+        armaEnSpawn.Clear();
 
-        List<Arma> disponibles = new List<Arma>(todasLasArmas);
         List<Transform> spawnsMezclados = new List<Transform>(spawns);
-        Mezclar(disponibles);
         Mezclar(spawnsMezclados);
-
-        int cantidad = Mathf.Min(maxArmasActivas, disponibles.Count, spawnsMezclados.Count);
-        for (int i = 0; i < cantidad; i++)
+        foreach (Transform sp in spawnsMezclados)
         {
-            if (disponibles[i] == null || spawnsMezclados[i] == null) continue;
-            string nombre = disponibles[i].gameObject.name;
-            Vector3 pos   = spawnsMezclados[i].position;
+            if (sp != null) spawnsArmasRonda.Add(sp.position);
+        }
+
+        int cantidad = Mathf.Min(maxArmasActivas, spawnsArmasRonda.Count, todasLasArmas.Length);
+        List<Arma> elegidas = SeleccionarArmasDistintasParaInicio(cantidad);
+
+        for (int i = 0; i < elegidas.Count && i < spawnsArmasRonda.Count; i++)
+        {
+            Arma arma = elegidas[i];
+            if (arma == null) continue;
+            string nombre = arma.gameObject.name;
+            Vector3 pos = spawnsArmasRonda[i];
             spawnAsignado[nombre] = pos;
-            AplicarEstadoArmaLocal(disponibles[i], pos, true, true);
+            spawnOrigenDeArma[nombre] = i;
+            armaEnSpawn[i] = nombre;
+            AplicarEstadoArmaLocal(arma, pos, true, true, arma.MunicionMaxima, arma.DuracionBateriaMaxima, true);
         }
 
         IniciarCajasMunicion(spawns, false);
     }
 
+    // Llamado cuando el jugador recoge o abre una caja de armas en un spawn
+    public void NotificarCajaArmaTomada(Arma arma)
+    {
+        if (arma == null) return;
+
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening || EsServidor())
+        {
+            ProcesarCajaArmaTomadaServidor(arma.gameObject.name);
+            return;
+        }
+
+        GameManager gm = FindFirstObjectByType<GameManager>();
+        if (gm != null && gm.IsSpawned)
+        {
+            gm.NotificarCajaArmaTomadaServerRpc(arma.gameObject.name);
+        }
+    }
+
+    public void ProcesarCajaArmaTomadaServidor(string nombreArma)
+    {
+        if (string.IsNullOrEmpty(nombreArma)) return;
+        if (!spawnOrigenDeArma.TryGetValue(nombreArma, out int idxSpawn)) return;
+
+        spawnOrigenDeArma.Remove(nombreArma);
+        if (armaEnSpawn.TryGetValue(idxSpawn, out string nombreActual) && nombreActual == nombreArma)
+        {
+            armaEnSpawn.Remove(idxSpawn);
+        }
+
+        StartCoroutine(ReaparecerCajaArmaCoroutine(idxSpawn));
+    }
+
+    private IEnumerator ReaparecerCajaArmaCoroutine(int idxSpawn)
+    {
+        yield return new WaitForSeconds(tiempoReaparicionCajaArma);
+
+        if (idxSpawn < 0 || idxSpawn >= spawnsArmasRonda.Count) yield break;
+        if (armaEnSpawn.ContainsKey(idxSpawn)) yield break;
+
+        AsegurarListaArmas();
+
+        // Tipos ya visibles en cajas cerradas para priorizar variedad aleatoria
+        HashSet<string> tiposEnCajas = new HashSet<string>();
+        foreach (string nombreCaja in armaEnSpawn.Values)
+        {
+            tiposEnCajas.Add(NombreBaseArma(nombreCaja));
+        }
+
+        List<Arma> candidatasPreferidas = new List<Arma>();
+        List<Arma> candidatasLibres = new List<Arma>();
+        foreach (Arma a in todasLasArmas)
+        {
+            if (a == null) continue;
+            if (a.gameObject.activeInHierarchy || a.transform.parent != null) continue;
+            candidatasLibres.Add(a);
+            if (!tiposEnCajas.Contains(NombreBaseArma(a.gameObject.name)))
+                candidatasPreferidas.Add(a);
+        }
+
+        List<Arma> pool = candidatasPreferidas.Count > 0 ? candidatasPreferidas : candidatasLibres;
+        if (pool.Count == 0) yield break;
+
+        Arma elegida = pool[Random.Range(0, pool.Count)];
+        string nombreElegida = elegida.gameObject.name;
+        Vector3 posSpawn = spawnsArmasRonda[idxSpawn];
+
+        spawnAsignado[nombreElegida] = posSpawn;
+        spawnOrigenDeArma[nombreElegida] = idxSpawn;
+        armaEnSpawn[idxSpawn] = nombreElegida;
+
+        EnviarActualizacionArma(nombreElegida, posSpawn, true, true, elegida.MunicionMaxima, elegida.DuracionBateriaMaxima, true);
+    }
+
+    // Despawnea armas sueltas en el suelo tras tiempoDespawnArmaSuelo sin que nadie las recoja
+    public void DespawnearArmaPorTiempo(Arma arma)
+    {
+        if (arma == null || !arma.gameObject.activeInHierarchy || arma.transform.parent != null) return;
+        if (spawnOrigenDeArma.ContainsKey(arma.gameObject.name)) return; // caja cerrada esperando en spawn
+
+        bool enRed = NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+        if (enRed && !EsServidor()) return;
+
+        EnviarActualizacionArma(arma.gameObject.name, arma.transform.position, false, false, 0, 0f, false);
+    }
+
     // =========================================================================
-    // SISTEMA DE CAJAS DE MUNICIÓN (SPAWN Y REAPARICIÓN EN UBICACIÓN DISTINTA)
+    // SISTEMA DE CAJAS DE MUNICIÓN (MÁXIMO 3 SIMULTÁNEAS Y REAPARICIÓN ESPACIADA)
     // =========================================================================
 
     private void AsegurarCajasMunicionInstanciadas()
     {
+        int limite = Mathf.Clamp(limiteCajasMunicionMapa, 1, MAX_CAJAS_MUNICION_MAPA);
         cajasMunicion.RemoveAll(c => c == null);
-        while (cajasMunicion.Count < maxCajasMunicionActivas)
+
+        // Reutilizar las existentes en escena (incluso desactivadas) y destruir excedentes si hubiera mas de 3
+        CajaMunicion[] existentes = FindObjectsByType<CajaMunicion>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        System.Array.Sort(existentes, (a, b) => string.CompareOrdinal(a.name, b.name));
+        foreach (CajaMunicion cm in existentes)
+        {
+            if (cm == null) continue;
+            if (!cajasMunicion.Contains(cm))
+            {
+                if (cajasMunicion.Count < limite)
+                {
+                    cajasMunicion.Add(cm);
+                }
+                else
+                {
+                    Destroy(cm.gameObject);
+                }
+            }
+        }
+
+        while (cajasMunicion.Count < limite)
         {
             int idx = cajasMunicion.Count;
             string nombreCaja = $"CajaMunicion_{idx}";
-            GameObject existente = GameObject.Find(nombreCaja);
+            GameObject existente = null;
+#if UNITY_EDITOR
+            GameObject prefabFbx = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Modelos/caja municion/caja municion.fbx");
+            if (prefabFbx != null)
+            {
+                existente = Instantiate(prefabFbx);
+                existente.name = nombreCaja;
+            }
+#endif
             if (existente == null)
             {
-#if UNITY_EDITOR
-                GameObject prefabFbx = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Modelos/caja municion/caja municion.fbx");
-                if (prefabFbx != null)
-                {
-                    existente = Instantiate(prefabFbx);
-                    existente.name = nombreCaja;
-                }
-#endif
-                if (existente == null)
-                {
-                    existente = new GameObject(nombreCaja);
-                }
+                existente = new GameObject(nombreCaja);
             }
 
             CajaMunicion comp = existente.GetComponent<CajaMunicion>();
@@ -504,43 +708,167 @@ public class GestorArmas : NetworkBehaviour
     private void ConstruirPuntosMunicion(List<Transform> spawnsArmas)
     {
         puntosMunicionMapa.Clear();
-        if (spawnsArmas == null || spawnsArmas.Count == 0) return;
+        List<Vector3> crudos = new List<Vector3>();
 
-        // Generar ubicaciones distribuidas a lo largo del mapa (desfasadas respecto a las cajas de armas y entre puntos)
-        for (int i = 0; i < spawnsArmas.Count; i++)
+        if (spawnsArmas != null)
         {
-            if (spawnsArmas[i] == null) continue;
-            Vector3 p = spawnsArmas[i].position;
-            float offsetSide = (i % 2 == 0) ? 1.15f : -1.15f;
-            puntosMunicionMapa.Add(p + new Vector3(offsetSide, 0.25f, 0f));
-
-            // Punto intermedio entre este spawn y el siguiente en el mismo plano Z
-            Transform sig = spawnsArmas[(i + 1) % spawnsArmas.Count];
-            if (sig != null)
+            foreach (Transform t in spawnsArmas)
             {
-                Vector3 medio = Vector3.Lerp(p, sig.position, 0.5f);
-                medio.z = p.z;
-                medio.y = Mathf.Max(p.y, sig.position.y) + 0.25f;
-                puntosMunicionMapa.Add(medio);
+                if (t != null) crudos.Add(t.position + new Vector3(0.95f, 0.25f, 0f));
             }
         }
+
+        if (mapaActualRonda != null)
+        {
+            foreach (Transform sp in GameManager.BuscarPuntos(mapaActualRonda, GameManager.PREFIJO_JUGADOR))
+            {
+                if (sp != null) crudos.Add(sp.position + new Vector3(0f, 0.25f, 0f));
+            }
+        }
+
+        // Añadir puntos intermedios y laterales para cubrir todo lo ancho del mapa
+        if (spawnsArmas != null && spawnsArmas.Count >= 2)
+        {
+            float planoZ = spawnsArmas[0] != null ? spawnsArmas[0].position.z : 0f;
+            for (int i = 0; i < spawnsArmas.Count; i++)
+            {
+                if (spawnsArmas[i] == null) continue;
+                Transform sig = spawnsArmas[(i + 1) % spawnsArmas.Count];
+                if (sig != null)
+                {
+                    Vector3 medio = Vector3.Lerp(spawnsArmas[i].position, sig.position, 0.5f);
+                    medio.z = planoZ;
+                    medio.y = Mathf.Max(spawnsArmas[i].position.y, sig.position.y) + 0.35f;
+                    crudos.Add(medio);
+                }
+            }
+        }
+
+        if (crudos.Count == 0) return;
+
+        // Mantener separacion entre ubicaciones posibles para obligar a recorrer el mapa
+        float[] distanciasFiltro = { 3.0f, 2.0f, 1.0f };
+        foreach (float distMin in distanciasFiltro)
+        {
+            puntosMunicionMapa.Clear();
+            float distMinSq = distMin * distMin;
+            foreach (Vector3 cand in crudos)
+            {
+                bool muyCerca = false;
+                foreach (Vector3 aceptado in puntosMunicionMapa)
+                {
+                    if ((cand - aceptado).sqrMagnitude < distMinSq)
+                    {
+                        muyCerca = true;
+                        break;
+                    }
+                }
+                if (!muyCerca)
+                {
+                    puntosMunicionMapa.Add(cand);
+                }
+            }
+
+            if (puntosMunicionMapa.Count >= Mathf.Min(crudos.Count, MAX_CAJAS_MUNICION_MAPA + 2))
+                break;
+        }
+    }
+
+    private int ElegirIndiceSpawnMunicionDistante(int evitarIndice)
+    {
+        List<int> libres = new List<int>();
+        List<Vector3> posicionesActivas = new List<Vector3>();
+
+        foreach (CajaMunicion otra in cajasMunicion)
+        {
+            if (otra != null && otra.EstaDisponible)
+                posicionesActivas.Add(otra.transform.position);
+        }
+
+        for (int i = 0; i < puntosMunicionMapa.Count; i++)
+        {
+            if (i == evitarIndice && puntosMunicionMapa.Count > 1) continue;
+
+            bool ocupado = false;
+            foreach (CajaMunicion otra in cajasMunicion)
+            {
+                if (otra != null && otra.EstaDisponible && otra.IndicePuntoSpawnActual == i)
+                {
+                    ocupado = true;
+                    break;
+                }
+            }
+            if (!ocupado) libres.Add(i);
+        }
+
+        if (libres.Count == 0)
+        {
+            for (int i = 0; i < puntosMunicionMapa.Count; i++)
+            {
+                if (i != evitarIndice || puntosMunicionMapa.Count == 1)
+                    libres.Add(i);
+            }
+        }
+
+        if (posicionesActivas.Count > 0 && libres.Count > 1)
+        {
+            // Filtrar puntos alejados (>= 3.5m) de las otras cajas activas para no juntarlas en una misma zona
+            List<int> bienSeparados = new List<int>();
+            foreach (int idx in libres)
+            {
+                float minDist = float.MaxValue;
+                foreach (Vector3 posAct in posicionesActivas)
+                {
+                    float d = Vector3.Distance(puntosMunicionMapa[idx], posAct);
+                    if (d < minDist) minDist = d;
+                }
+                if (minDist >= 3.5f) bienSeparados.Add(idx);
+            }
+
+            if (bienSeparados.Count > 0)
+                return bienSeparados[Random.Range(0, bienSeparados.Count)];
+
+            // Si el mapa es pequeno, escoger uno de los 2 puntos mas lejanos
+            libres.Sort((a, b) =>
+            {
+                float dA = DistanciaMinimaA(puntosMunicionMapa[a], posicionesActivas);
+                float dB = DistanciaMinimaA(puntosMunicionMapa[b], posicionesActivas);
+                return dB.CompareTo(dA);
+            });
+            int top = Mathf.Min(2, libres.Count);
+            return libres[Random.Range(0, top)];
+        }
+
+        return libres[Random.Range(0, libres.Count)];
+    }
+
+    private static float DistanciaMinimaA(Vector3 punto, List<Vector3> otros)
+    {
+        float mejor = float.MaxValue;
+        foreach (Vector3 o in otros)
+        {
+            float d = Vector3.Distance(punto, o);
+            if (d < mejor) mejor = d;
+        }
+        return mejor;
     }
 
     private void IniciarCajasMunicion(List<Transform> spawnsArmas, bool enRed)
     {
-        StopAllCoroutines();
         AsegurarCajasMunicionInstanciadas();
         ConstruirPuntosMunicion(spawnsArmas);
 
         if (puntosMunicionMapa.Count == 0) return;
 
-        List<int> indicesLibres = new List<int>();
-        for (int i = 0; i < puntosMunicionMapa.Count; i++) indicesLibres.Add(i);
-        Mezclar(indicesLibres);
-
         for (int i = 0; i < cajasMunicion.Count; i++)
         {
-            int idxSpawn = indicesLibres[i % indicesLibres.Count];
+            cajasMunicion[i].EstablecerDisponible(false);
+        }
+
+        int totalCajas = Mathf.Min(cajasMunicion.Count, MAX_CAJAS_MUNICION_MAPA);
+        for (int i = 0; i < totalCajas; i++)
+        {
+            int idxSpawn = ElegirIndiceSpawnMunicionDistante(-1);
             Vector3 pos = puntosMunicionMapa[idxSpawn];
             if (enRed)
             {
@@ -557,13 +885,7 @@ public class GestorArmas : NetworkBehaviour
     {
         if (caja == null) return;
 
-        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening)
-        {
-            ProcesarConsumoCajaMunicionServidor(caja.IndiceCaja);
-            return;
-        }
-
-        if (EsServidor())
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening || EsServidor())
         {
             ProcesarConsumoCajaMunicionServidor(caja.IndiceCaja);
             return;
@@ -590,7 +912,7 @@ public class GestorArmas : NetworkBehaviour
 
     private IEnumerator ReaparecerCajaMunicionCoroutine(int indiceCaja, int spawnAnterior)
     {
-        yield return new WaitForSeconds(tiempoReaparicionMunicion);
+        yield return new WaitForSeconds(segundosRespawnMunicion);
 
         AsegurarCajasMunicionInstanciadas();
         if (indiceCaja < 0 || indiceCaja >= cajasMunicion.Count) yield break;
@@ -601,34 +923,7 @@ public class GestorArmas : NetworkBehaviour
         }
         if (puntosMunicionMapa.Count == 0) yield break;
 
-        // Elegir una nueva ubicacion distinta a la anterior y que no este ocupada por otra caja de municion
-        List<int> candidatos = new List<int>();
-        for (int i = 0; i < puntosMunicionMapa.Count; i++)
-        {
-            if (i == spawnAnterior && puntosMunicionMapa.Count > 1) continue;
-
-            bool ocupado = false;
-            foreach (CajaMunicion otra in cajasMunicion)
-            {
-                if (otra != null && otra.EstaDisponible && otra.IndicePuntoSpawnActual == i)
-                {
-                    ocupado = true;
-                    break;
-                }
-            }
-            if (!ocupado) candidatos.Add(i);
-        }
-
-        if (candidatos.Count == 0)
-        {
-            for (int i = 0; i < puntosMunicionMapa.Count; i++)
-            {
-                if (i != spawnAnterior || puntosMunicionMapa.Count == 1)
-                    candidatos.Add(i);
-            }
-        }
-
-        int nuevoIndice = candidatos[Random.Range(0, candidatos.Count)];
+        int nuevoIndice = ElegirIndiceSpawnMunicionDistante(spawnAnterior);
         Vector3 nuevaPos = puntosMunicionMapa[nuevoIndice];
         EnviarActualizacionCajaMunicion(indiceCaja, nuevaPos, true, nuevoIndice);
     }
@@ -682,64 +977,46 @@ public class GestorArmas : NetworkBehaviour
         }
     }
 
-    // Llamado desde Personaje (via RPC al servidor) cuando el jugador muere
-    public void SoltarArma(string nombreArma)
+    // Llamado desde Personaje (via RPC al servidor) cuando se suelta el arma conservando exactamente su municion restante
+    public void SoltarArmaEnPosicion(string nombreArma, Vector3 posicion, bool enCaja, int municionRestante, float bateriaRestante)
     {
         if (!EsServidor()) return;
-
-        Vector3 pos;
-        if (!spawnAsignado.TryGetValue(nombreArma, out pos))
-        {
-            Debug.LogWarning($"GestorArmas: no hay spawn registrado para '{nombreArma}'");
-            return;
-        }
-        // Al morir el jugador, el arma regresa a su spawn dentro de una caja cerrada
-        EnviarActualizacionArma(nombreArma, pos, true, true);
+        EnviarActualizacionArma(nombreArma, posicion, true, enCaja, municionRestante, bateriaRestante, false);
     }
 
-    // Llamado cuando el jugador suelta el arma voluntariamente (tecla C) o al romperse la caja (tecla V)
-    public void SoltarArmaEnPosicion(string nombreArma, Vector3 posicion, bool enCaja = false)
-    {
-        if (!EsServidor()) return;
-
-        // No actualizamos spawnAsignado porque el drop es temporal
-        // El arma sigue asociada a su spawn original para cuando muera el jugador
-        EnviarActualizacionArma(nombreArma, posicion, true, enCaja);
-    }
-
-    private void EnviarActualizacionArma(string nombreArma, Vector3 posicion, bool activar, bool enCaja)
+    private void EnviarActualizacionArma(string nombreArma, Vector3 posicion, bool activar, bool enCaja, int municion, float bateria, bool esNuevaCajaEnSpawn)
     {
         if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening)
         {
-            AplicarEstadoArmaRemoto(nombreArma, posicion, activar, enCaja);
+            AplicarEstadoArmaRemoto(nombreArma, posicion, activar, enCaja, municion, bateria, esNuevaCajaEnSpawn);
             return;
         }
 
         if (IsSpawned)
         {
-            ActualizarArmaRpc(nombreArma, posicion, activar, enCaja);
+            ActualizarArmaRpc(nombreArma, posicion, activar, enCaja, municion, bateria, esNuevaCajaEnSpawn);
             return;
         }
 
         GameManager gm = FindFirstObjectByType<GameManager>();
         if (gm != null && gm.IsSpawned)
         {
-            gm.SincronizarArmaSpawneadaClienteRpc(nombreArma, posicion, activar, enCaja);
+            gm.SincronizarArmaSpawneadaClienteRpc(nombreArma, posicion, activar, enCaja, municion, bateria, esNuevaCajaEnSpawn);
         }
         else
         {
-            AplicarEstadoArmaRemoto(nombreArma, posicion, activar, enCaja);
+            AplicarEstadoArmaRemoto(nombreArma, posicion, activar, enCaja, municion, bateria, esNuevaCajaEnSpawn);
         }
     }
 
     // Activa o desactiva un arma en todos los clientes y la mueve a la posición indicada
     [Rpc(SendTo.ClientsAndHost)]
-    private void ActualizarArmaRpc(string nombreArma, Vector3 posicion, bool activar, bool enCaja)
+    private void ActualizarArmaRpc(string nombreArma, Vector3 posicion, bool activar, bool enCaja, int municion, float bateria, bool esNuevaCajaEnSpawn)
     {
-        AplicarEstadoArmaRemoto(nombreArma, posicion, activar, enCaja);
+        AplicarEstadoArmaRemoto(nombreArma, posicion, activar, enCaja, municion, bateria, esNuevaCajaEnSpawn);
     }
 
-    public void AplicarEstadoArmaRemoto(string nombreArma, Vector3 posicion, bool activar, bool enCaja)
+    public void AplicarEstadoArmaRemoto(string nombreArma, Vector3 posicion, bool activar, bool enCaja, int municion, float bateria, bool esNuevaCajaEnSpawn)
     {
         Arma arma = BuscarArmaPorNombre(nombreArma);
         if (arma == null)
@@ -748,21 +1025,32 @@ public class GestorArmas : NetworkBehaviour
             return;
         }
 
-        AplicarEstadoArmaLocal(arma, posicion, activar, enCaja);
+        AplicarEstadoArmaLocal(arma, posicion, activar, enCaja, municion, bateria, esNuevaCajaEnSpawn);
     }
 
-    private void AplicarEstadoArmaLocal(Arma arma, Vector3 posicion, bool activar, bool enCaja)
+    private void AplicarEstadoArmaLocal(Arma arma, Vector3 posicion, bool activar, bool enCaja, int municion, float bateria, bool esNuevaCajaEnSpawn)
     {
         if (activar)
         {
             arma.gameObject.SetActive(true);
             arma.ColocarEnCaja(enCaja);
-            arma.Soltar(posicion);          // desancla del jugador si estaba pegada y la centra en posicion
+            if (esNuevaCajaEnSpawn)
+            {
+                arma.PrepararParaNuevaCaja();
+                arma.EstablecerEsperandoEnSpawn(true);
+            }
+            else if (!enCaja)
+            {
+                arma.EstablecerEstadoMunicion(municion, bateria);
+                arma.EstablecerEsperandoEnSpawn(false);
+            }
+            arma.Soltar(posicion); // desancla del jugador si estaba pegada y la centra en posicion sin reiniciar balas
         }
         else
         {
+            arma.EstablecerEsperandoEnSpawn(false);
             arma.ColocarEnCaja(enCaja);
-            arma.Soltar(posicion);          // si un jugador la traia del mapa anterior, se la quita de la mano
+            arma.Soltar(posicion); // si un jugador la traia del mapa anterior, se la quita de la mano
             arma.gameObject.SetActive(false);
         }
     }

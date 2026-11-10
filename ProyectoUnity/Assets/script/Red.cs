@@ -281,14 +281,14 @@ public class Red : NetworkBehaviour
     }
 
     [Rpc(SendTo.NotOwner)]
-    public void AvisarArmaRpc(string nombreArma)
+    public void AvisarArmaRpc(string nombreArma, int municionRestante, float bateriaRestante)
     {
         // se busca por nombre porque las armas no son NetworkObject; cada arma en la escena debe tener nombre unico
         foreach (Arma arma in FindObjectsByType<Arma>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
             if (arma.name == nombreArma)
             {
-                arma.AdjuntarA(transform.Find("Mano"), GetComponent<Personaje>());
+                arma.AdjuntarA(transform.Find("Mano"), GetComponent<Personaje>(), municionRestante, bateriaRestante);
                 return;
             }
         }
@@ -309,27 +309,28 @@ public class Red : NetworkBehaviour
     }
 
     [Rpc(SendTo.Server)]
-    public void SoltarArmaEnPosicionServerRpc(string nombreArma, Vector3 posicion, bool enCaja)
+    public void SoltarArmaEnPosicionServerRpc(string nombreArma, Vector3 posicion, bool enCaja, int municionRestante, float bateriaRestante)
     {
         GestorArmas ga = GestorArmas.Instancia;
         if (ga != null && ga.IsSpawned)
         {
-            ga.SoltarArmaEnPosicion(nombreArma, posicion, enCaja);
+            ga.SoltarArmaEnPosicion(nombreArma, posicion, enCaja, municionRestante, bateriaRestante);
         }
         else
         {
-            SoltarArmaClientesRpc(nombreArma, posicion, enCaja);
+            SoltarArmaClientesRpc(nombreArma, posicion, enCaja, municionRestante, bateriaRestante);
         }
     }
 
     [Rpc(SendTo.ClientsAndHost)]
-    private void SoltarArmaClientesRpc(string nombreArma, Vector3 posicion, bool enCaja)
+    private void SoltarArmaClientesRpc(string nombreArma, Vector3 posicion, bool enCaja, int municionRestante, float bateriaRestante)
     {
         foreach (Arma arma in FindObjectsByType<Arma>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
             if (arma.name == nombreArma)
             {
                 arma.ColocarEnCaja(enCaja);
+                if (!enCaja) arma.EstablecerEstadoMunicion(municionRestante, bateriaRestante);
                 arma.Soltar(posicion);
                 arma.gameObject.SetActive(true);
                 return;

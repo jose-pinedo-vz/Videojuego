@@ -17,11 +17,20 @@ public class ArmaPlatanos : Arma
 
     protected override void Start()
     {
-        municionMaxima = 5;
-        municionActual = 5;
+        if (municionMaxima <= 0)
+        {
+            municionMaxima = 5;
+            municionActual = 5;
+        }
         if (Cadencia <= 0f) Cadencia = 2.2f;
         if (tiempoRecarga <= 0f) tiempoRecarga = 1.2f;
         base.Start();
+        ActualizarPlatanosVisibles();
+    }
+
+    protected override void ActualizarVisualMunicion()
+    {
+        base.ActualizarVisualMunicion();
         ActualizarPlatanosVisibles();
     }
 
@@ -84,6 +93,7 @@ public class ArmaPlatanos : Arma
 
         if (lanzador.IsSpawned && NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
         {
+            lanzador.NotificarCambioMunicionRed(this);
             lanzador.LanzarCascaraPlatanoRpc(origen, velocidad, duracionResbalonSegundos);
         }
         else

@@ -21,11 +21,20 @@ public class ArmaBarreno : Arma
 
     protected override void Start()
     {
-        municionMaxima = 3;
-        municionActual = 3;
+        if (municionMaxima <= 0)
+        {
+            municionMaxima = 3;
+            municionActual = 3;
+        }
         if (Cadencia <= 0f) Cadencia = 1.4f;
         if (tiempoRecarga <= 0f) tiempoRecarga = 1.6f;
         base.Start();
+        ActualizarVisualPaquete();
+    }
+
+    protected override void ActualizarVisualMunicion()
+    {
+        base.ActualizarVisualMunicion();
         ActualizarVisualPaquete();
     }
 
@@ -88,6 +97,7 @@ public class ArmaBarreno : Arma
 
         if (lanzador.IsSpawned && NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
         {
+            lanzador.NotificarCambioMunicionRed(this);
             lanzador.LanzarBarrenoRpc(origen, velocidadInicial);
         }
         else
@@ -118,6 +128,7 @@ public class ArmaBarreno : Arma
 
         if (portador.IsSpawned && NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
         {
+            portador.SincronizarMunicionArmaRpc(gameObject.name, 0, DuracionBateriaActual);
             portador.DetonarBarrenoEnPosicionRpc(centroExplosion, radioExplosion);
         }
 

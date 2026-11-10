@@ -20,6 +20,9 @@ public class Arma : MonoBehaviour
     [SerializeField] protected float Retroceso=0-2f;
     [SerializeField] protected float Dispersion=1.0f;
     [SerializeField] protected int perdigonesPorDisparo = 1;
+    [SerializeField] protected float retrocesoDisparoHorizontal = 0f;
+    [SerializeField] protected float retrocesoDisparoVertical = 0f;
+    [SerializeField] protected float tiempoDespawnEnSuelo = 15f;
     protected bool jugadorCerca = false; //Esto dejas aber si el jugador esta tocando al arma
     protected Transform mano; //El objeto al que se pegara cuando el jugador lo agarre (debe ser invisible)
     protected float tiempoUltimoDisparo=0f;
@@ -35,6 +38,11 @@ public class Arma : MonoBehaviour
     protected bool enCaja = false;
     private GameObject cajaVisual;
     private static int ultimoFrameAccionC = -1;
+    private bool datosConfigurados = false;
+    private float tiempoEnSueloSinDuenio = 0f;
+    private bool esperandoRecogidaEnSpawn = false;
+    private bool despawnSolicitado = false;
+    protected virtual bool EstaEnVuelo => false;
 
     // Caida al soltarse: gravedad simple + raycast al piso, igual en todos los clientes (no depende de red)
     private bool cayendo = false;
@@ -47,13 +55,13 @@ public class Arma : MonoBehaviour
 
     [Header("Raygun (Rayo Continuo)")]
     [SerializeField] protected float tiempoCargaRequerido = 3.0f;
-    [SerializeField] protected float duracionBateriaMaxima = 10.0f;
+    [SerializeField] protected float duracionBateriaMaxima = 5.0f;
     [SerializeField] protected float anchoRayo = 1.0f;
     [SerializeField] protected float radioRayo = 0.5f;
     [SerializeField] protected float alcanceRayo = 80.0f;
 
     private float tiempoCargaActual = 0f;
-    private float duracionBateriaActual = 10.0f;
+    private float duracionBateriaActual = 5.0f;
     private bool disparandoRayo = false;
     private bool cargandoRayo = false;
     private bool disparandoRayoRemoto = false;
@@ -97,7 +105,6 @@ public class Arma : MonoBehaviour
     [SerializeField] protected int municionMaxima = 10;
     [SerializeField] protected float tiempoRecarga = 1.5f;
     protected int municionActual;
-    protected int cargadoresExtra = 0; // al salir de caja solo trae el cargador puesto; recargar requiere caja de municion
     protected bool recargando = false;
 
     [Header("Area de recogida (trigger en el suelo)")]
@@ -107,8 +114,8 @@ public class Arma : MonoBehaviour
     [SerializeField] protected Vector3 tamanoAreaRecogida = Vector3.zero;
 
     public int MunicionActual => modoDisparo == ModoDisparo.RayoContinuo ? Mathf.CeilToInt(duracionBateriaActual) : municionActual;
+    public int MunicionCruda => municionActual;
     public int MunicionMaxima => modoDisparo == ModoDisparo.RayoContinuo ? Mathf.CeilToInt(duracionBateriaMaxima) : municionMaxima;
-    public int CargadoresExtra => cargadoresExtra;
     public bool Recargando => recargando;
     public bool EnCaja => enCaja;
     public string NombreMostrado => enCaja ? "Caja de madera" : (!string.IsNullOrEmpty(nombreMostrado) ? nombreMostrado : FormatearNombreArma(gameObject.name));
@@ -148,7 +155,6 @@ public class Arma : MonoBehaviour
     protected virtual void Awake()
     {
         municionActual = municionMaxima;
-        cargadoresExtra = 0;
         duracionBateriaActual = duracionBateriaMaxima;
         rotacionInicial = transform.rotation;
 
@@ -209,29 +215,83 @@ public class Arma : MonoBehaviour
 
     public void ConfigurarDatosArma(float cadencia, float alcance, int municionMax, float recarga)
     {
-        ConfigurarDatosArma(cadencia, alcance, municionMax, recarga, modoDisparo, Dispersion, Relantizacion, perdigonesPorDisparo);
+        ConfigurarDatosArma(cadencia, alcance, municionMax, recarga, modoDisparo, Dispersion, Relantizacion, perdigonesPorDisparo, retrocesoDisparoHorizontal, retrocesoDisparoVertical);
     }
 
-    public void ConfigurarDatosArma(float cadencia, float alcance, int municionMax, float recarga, ModoDisparo modo, float dispersion, float ralentizacion = 0f, int perdigones = 1)
+    public void ConfigurarDatosArma(
+        float cadencia,
+        float alcance,
+        int municionMax,
+        float recarga,
+        ModoDisparo modo,
+        float dispersion,
+        float ralentizacion = 0f,
+        int perdigones = 1,
+        float retrocesoH = 0f,
+        float retrocesoV = 0f)
     {
         Cadencia = cadencia;
         Alcance = alcance;
         municionMaxima = municionMax;
-        municionActual = municionMax;
-        cargadoresExtra = 0;
         tiempoRecarga = recarga;
         modoDisparo = modo;
         Dispersion = dispersion;
         Relantizacion = ralentizacion;
         perdigonesPorDisparo = Mathf.Max(1, perdigones);
+        retrocesoDisparoHorizontal = retrocesoH;
+        retrocesoDisparoVertical = retrocesoV;
 
         if (modoDisparo == ModoDisparo.RayoContinuo)
         {
-            duracionBateriaMaxima = municionMax > 0 ? (float)municionMax : 10.0f;
-            duracionBateriaActual = duracionBateriaMaxima;
-            tiempoCargaActual = 0f;
+            duracionBateriaMaxima = municionMax > 0 ? (float)municionMax : 5.0f;
             alcanceRayo = alcance > 0f ? alcance : 80f;
         }
+
+        if (!datosConfigurados)
+        {
+            datosConfigurados = true;
+            municionActual = municionMax;
+            if (modoDisparo == ModoDisparo.RayoContinuo)
+            {
+                duracionBateriaActual = duracionBateriaMaxima;
+                tiempoCargaActual = 0f;
+            }
+        }
+        else if (municionMaxima > 0)
+        {
+            municionActual = Mathf.Clamp(municionActual, 0, municionMaxima);
+        }
+    }
+
+    public virtual void PrepararParaNuevaCaja()
+    {
+        datosConfigurados = true;
+        municionActual = municionMaxima;
+        duracionBateriaActual = duracionBateriaMaxima;
+        tiempoCargaActual = 0f;
+        recargando = false;
+        tiempoEnSueloSinDuenio = 0f;
+        despawnSolicitado = false;
+        ActualizarVisualMunicion();
+    }
+
+    public void EstablecerEsperandoEnSpawn(bool estado)
+    {
+        esperandoRecogidaEnSpawn = estado;
+        tiempoEnSueloSinDuenio = 0f;
+        despawnSolicitado = false;
+    }
+
+    public virtual void EstablecerEstadoMunicion(int municion, float bateria)
+    {
+        datosConfigurados = true;
+        municionActual = municionMaxima > 0 ? Mathf.Clamp(municion, 0, municionMaxima) : municion;
+        duracionBateriaActual = Mathf.Clamp(bateria, 0f, duracionBateriaMaxima);
+        ActualizarVisualMunicion();
+    }
+
+    protected virtual void ActualizarVisualMunicion()
+    {
     }
 
     private void InicializarRenderizadoresArma()
@@ -497,12 +557,6 @@ public class Arma : MonoBehaviour
     {
         CrearCajaVisualSiNoExiste();
         enCaja = estado;
-        if (estado)
-        {
-            municionActual = municionMaxima;
-            cargadoresExtra = 0;
-            duracionBateriaActual = duracionBateriaMaxima;
-        }
 
         if (renderizadoresArma == null || renderizadoresArma.Length == 0)
         {
@@ -521,6 +575,11 @@ public class Arma : MonoBehaviour
         {
             cajaVisual.SetActive(enCaja);
             if (enCaja) ActualizarTransformCaja();
+        }
+
+        if (!enCaja)
+        {
+            ActualizarVisualMunicion();
         }
     }
 
@@ -640,10 +699,64 @@ public class Arma : MonoBehaviour
         {
             ActualizarRotacionEnMano();
         }
+        else if (gameObject.activeInHierarchy && !EstaEnVuelo && (!enCaja || !esperandoRecogidaEnSpawn))
+        {
+            // Arma sacada de caja (o soltada en el suelo): despawnea tras un tiempo si nadie la recoge
+            float limiteDespawn = GestorArmas.Instancia != null
+                ? GestorArmas.Instancia.TiempoDespawnArmaSuelo
+                : tiempoDespawnEnSuelo;
+
+            tiempoEnSueloSinDuenio += Time.deltaTime;
+            float restante = limiteDespawn - tiempoEnSueloSinDuenio;
+            if (restante > 0f && restante <= 3f)
+            {
+                bool parpadeoVisible = Mathf.FloorToInt(tiempoEnSueloSinDuenio * 7f) % 2 == 0;
+                AplicarParpadeoDespawn(parpadeoVisible);
+            }
+
+            if (tiempoEnSueloSinDuenio >= limiteDespawn && !despawnSolicitado)
+            {
+                bool esAutoridad = NetworkManager.Singleton == null
+                    || !NetworkManager.Singleton.IsListening
+                    || NetworkManager.Singleton.IsServer;
+
+                if (esAutoridad && GestorArmas.Instancia != null)
+                {
+                    despawnSolicitado = true;
+                    GestorArmas.Instancia.DespawnearArmaPorTiempo(this);
+                }
+            }
+        }
 
         if (modoDisparo == ModoDisparo.RayoContinuo || estadoAudioRaygun != EstadoAudioRaygun.Inactivo)
         {
             ActualizarAudioRaygun();
+        }
+    }
+
+    private void AplicarParpadeoDespawn(bool visible)
+    {
+        if (enCaja)
+        {
+            if (cajaVisual != null) cajaVisual.SetActive(visible);
+            return;
+        }
+        if (visible)
+        {
+            if (renderizadoresArma != null)
+            {
+                foreach (MeshRenderer mr in renderizadoresArma)
+                    if (mr != null) mr.enabled = true;
+            }
+            ActualizarVisualMunicion();
+        }
+        else
+        {
+            if (renderizadoresArma != null)
+            {
+                foreach (MeshRenderer mr in renderizadoresArma)
+                    if (mr != null) mr.enabled = false;
+            }
         }
     }
 
@@ -786,6 +899,14 @@ public class Arma : MonoBehaviour
 
         ultimoFrameAccionC = Time.frameCount;
         cayendo = false;
+        tiempoEnSueloSinDuenio = 0f;
+        despawnSolicitado = false;
+        if (esperandoRecogidaEnSpawn)
+        {
+            esperandoRecogidaEnSpawn = false;
+            if (GestorArmas.Instancia != null)
+                GestorArmas.Instancia.NotificarCajaArmaTomada(this);
+        }
         Debug.Log("Arma recogida");
 
         transform.parent=mano;//Esto hace que el arma pase a ser hija de "la mano" pa que se ponga ahi pues
@@ -798,18 +919,14 @@ public class Arma : MonoBehaviour
         GetComponent<Collider>().enabled=false;//Desabilita OnTriggerExit y Enter para que no se la puedan robar (¿Seria interesante si se pudiera?)
         jugadorCerca = false; // con el collider apagado OnTriggerExit ya no se llama, si no se podra recoger otra vez
         recargando = false;
-        if (enCaja)
-        {
-            municionActual = municionMaxima;
-            cargadoresExtra = 0;
-        }
+        ColocarEnCaja(enCaja); // restaura visibilidad si venia parpadeando en el suelo, sin reiniciar balas
         tiempoRecogida = 0.5f; // Cooldown de 0.5s para evitar que se suelte inmediatamente
         jugador.armaEquipada = this; //Le dice al personaje "esta es tu arma ahora"
         jugadorQueLaEquipo=jugador; //Para solucionar un problema que tomo 3 horas resolver...
         ActualizarRotacionEnMano();
         Red red = jugador.GetComponent<Red>();
         if (red != null && red.IsSpawned)
-            red.AvisarArmaRpc(gameObject.name); // por nombre, para que los demas peguen esta misma arma
+            red.AvisarArmaRpc(gameObject.name, municionActual, duracionBateriaActual); // sincroniza arma y balas restantes
     }
 
     // para que los demas jugadores vean el trazo de un disparo que no es suyo
@@ -1148,6 +1265,7 @@ public class Arma : MonoBehaviour
             if (estabaCargando)
                 jugadorQueLaEquipo.ActualizarCargaRayoRpc(false);
             jugadorQueLaEquipo.ActualizarEstadoRayoRpc(false, Vector3.zero, Vector3.zero, 0f);
+            jugadorQueLaEquipo.NotificarCambioMunicionRed(this);
         }
     }
 
@@ -1529,16 +1647,25 @@ public class Arma : MonoBehaviour
             }
         }
 
+        // Retroceso fisico al disparar (AK-47 suave, francotiradores Barret/Antitanques mas exagerado)
+        if (!haciaArriba && jugadorQueLaEquipo != null && (retrocesoDisparoHorizontal > 0f || retrocesoDisparoVertical > 0f))
+        {
+            jugadorQueLaEquipo.RecibirRetrocesoDisparo(retrocesoDisparoHorizontal, retrocesoDisparoVertical);
+        }
+
         // El trazo visual principal mantiene el plano Z de la boca del arma
         UltimoInicioTrazo = inicioTrazo;
         UltimoFinTrazo = finTrazoPrincipal;
         if (corrutinaTrazo != null) StopCoroutine(corrutinaTrazo);
         corrutinaTrazo = StartCoroutine(MostrarTrazo(inicioTrazo, finTrazoPrincipal));
         if (jugadorQueLaEquipo != null && jugadorQueLaEquipo.IsSpawned)
+        {
             jugadorQueLaEquipo.MostrarDisparoRpc(inicioTrazo, finTrazoPrincipal);
+            jugadorQueLaEquipo.NotificarCambioMunicionRed(this);
+        }
     }
 
-    public void AdjuntarA(Transform nuevaMano, Personaje jugador)
+    public void AdjuntarA(Transform nuevaMano, Personaje jugador, int municionSync = -1, float bateriaSync = -1f)
     {
         mano = nuevaMano;
         transform.parent = mano;
@@ -1546,23 +1673,25 @@ public class Arma : MonoBehaviour
         GetComponent<Collider>().enabled = false;
         jugador.armaEquipada = this;
         jugadorQueLaEquipo = jugador;
+        esperandoRecogidaEnSpawn = false;
+        tiempoEnSueloSinDuenio = 0f;
+        despawnSolicitado = false;
         ActualizarRotacionEnMano();
         recargando = false;
-        if (enCaja)
+        if (municionSync >= 0)
         {
-            municionActual = municionMaxima;
-            cargadoresExtra = 0;
-            duracionBateriaActual = duracionBateriaMaxima;
+            EstablecerEstadoMunicion(municionSync, bateriaSync >= 0f ? bateriaSync : duracionBateriaActual);
         }
+        ColocarEnCaja(enCaja);
         tiempoCargaActual = 0f;
         DetenerRayoContinuo();
     }
 
-    // Se llama al presionar R. Solo permite recargar si el jugador recogio una caja de municion (cargadoresExtra > 0)
+    // Se llama al presionar R. Solo recarga manualmente si el jugador tiene el cargador extra guardado en su Personaje.
     public void IniciarRecarga()
     {
-        if (recargando) return;
-        if (municionMaxima <= 0) return; // Armas cuerpo a cuerpo / escudo no usan cargador
+        if (recargando || jugadorQueLaEquipo == null || enCaja) return;
+        if (municionMaxima <= 0 && modoDisparo != ModoDisparo.RayoContinuo) return; // Armas cuerpo a cuerpo / escudo no usan cargador
 
         if (modoDisparo == ModoDisparo.RayoContinuo)
         {
@@ -1573,10 +1702,10 @@ public class Arma : MonoBehaviour
             if (municionActual >= municionMaxima) return;
         }
 
-        if (cargadoresExtra <= 0)
+        if (jugadorQueLaEquipo.CargadoresExtra <= 0)
         {
             Sonidos.Reproducir("sin_municion", transform.position, 0.85f);
-            Debug.Log("No tienes cargadores de reserva. Recoge una caja de municion.");
+            Debug.Log("No tienes cargador extra guardado. Busca una caja de municion.");
             return;
         }
 
@@ -1589,59 +1718,29 @@ public class Arma : MonoBehaviour
         if (disparandoRayo || cargandoRayo) DetenerRayoContinuo();
         Debug.Log("Recargando...");
         yield return new WaitForSeconds(tiempoRecarga);
-        if (cargadoresExtra > 0)
-            cargadoresExtra--;
-        municionActual = municionMaxima;
-        duracionBateriaActual = duracionBateriaMaxima;
-        tiempoCargaActual = 0f;
+
+        if (jugadorQueLaEquipo != null && jugadorQueLaEquipo.ConsumirCargadorExtra())
+        {
+            municionActual = municionMaxima;
+            duracionBateriaActual = duracionBateriaMaxima;
+            tiempoCargaActual = 0f;
+            ActualizarVisualMunicion();
+            AlCompletarRecarga();
+            jugadorQueLaEquipo.NotificarCambioMunicionRed(this);
+        }
         recargando = false;
-        AlCompletarRecarga();
     }
 
     protected virtual void AlCompletarRecarga()
     {
     }
 
-    /// <summary>
-    /// Otorga un cargador completo de municion para el arma actual al pasar sobre una CajaMunicion.
-    /// Devuelve true si la caja fue aprovechada por esta arma.
-    /// </summary>
-    public virtual bool RecargarConCajaMunicion()
-    {
-        if (enCaja) return false;
-        if (municionMaxima <= 0 && modoDisparo != ModoDisparo.RayoContinuo) return false; // Machete/Escudo no consumen municion
-
-        if (modoDisparo == ModoDisparo.RayoContinuo)
-        {
-            if (duracionBateriaActual < duracionBateriaMaxima)
-            {
-                duracionBateriaActual = duracionBateriaMaxima;
-            }
-            else
-            {
-                cargadoresExtra++;
-            }
-            return true;
-        }
-
-        // Si el arma estaba descargada o es un consumible directo (barreno/platanos), rellenar el cargador actual de inmediato;
-        // si ya tenia el cargador lleno, otorgar un cargador completo extra para recargar con R (o recargar directamente)
-        if (municionActual < municionMaxima)
-        {
-            municionActual = municionMaxima;
-            recargando = false;
-            AlCompletarRecarga();
-        }
-        else
-        {
-            cargadoresExtra++;
-        }
-        return true;
-    }
-
     private void RomperCaja()
     {
         Personaje portador = jugadorQueLaEquipo;
+        esperandoRecogidaEnSpawn = false;
+        if (GestorArmas.Instancia != null)
+            GestorArmas.Instancia.NotificarCajaArmaTomada(this);
         ColocarEnCaja(false);
 
         if (portador != null)
@@ -1667,7 +1766,7 @@ public class Arma : MonoBehaviour
             Red red = portador != null ? portador.GetComponent<Red>() : null;
             if (red != null && red.IsSpawned && NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
             {
-                red.SoltarArmaEnPosicionServerRpc(gameObject.name, posDrop, false);
+                red.SoltarArmaEnPosicionServerRpc(gameObject.name, posDrop, false, municionActual, duracionBateriaActual);
             }
             else
             {
@@ -1681,7 +1780,7 @@ public class Arma : MonoBehaviour
     }
 
     // Suelta el arma: la desancla del jugador y la coloca en posicion (el suelo)
-    // Lo llama GestorArmas en todos los clientes cuando el jugador muere o suelta el arma
+    // Conserva exactamente las balas restantes que tenia el arma (no rellena cargador gratis)
     public virtual void Soltar(Vector3 posicion)
     {
         // Limpiar referencia del jugador que la tenía
@@ -1695,14 +1794,12 @@ public class Arma : MonoBehaviour
         jugadorCerca = false;
         StopAllCoroutines(); // cancela una recarga en curso, si la habia
         recargando = false;
-        if (enCaja)
-        {
-            municionActual = municionMaxima;
-            cargadoresExtra = 0;
-            duracionBateriaActual = duracionBateriaMaxima;
-        }
+        if (trazo != null) trazo.enabled = false;
         tiempoCargaActual = 0f;
+        tiempoEnSueloSinDuenio = 0f;
+        despawnSolicitado = false;
         DetenerRayoContinuo();
+        ColocarEnCaja(enCaja);
 
         transform.parent = null;
         transform.rotation = rotacionBaseIzquierda;
@@ -1780,10 +1877,13 @@ public class Arma : MonoBehaviour
         }
 
         ultimoFrameAccionC = Time.frameCount;
+        esperandoRecogidaEnSpawn = false;
         Personaje portador = jugadorQueLaEquipo;
         float dirX = portador.DireccionHorizontal;
         Vector3 posicionDrop = portador.transform.position + new Vector3(dirX * 0.45f, 0.25f, 0f);
         bool seguiaEnCaja = enCaja;
+        int municionRestante = municionActual;
+        float bateriaRestante = duracionBateriaActual;
 
         if (portador.armaEquipada == this)
             portador.armaEquipada = null;
@@ -1792,7 +1892,7 @@ public class Arma : MonoBehaviour
         Red red = portador.GetComponent<Red>();
         if (red != null && red.IsSpawned && NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
         {
-            red.SoltarArmaEnPosicionServerRpc(gameObject.name, posicionDrop, seguiaEnCaja);
+            red.SoltarArmaEnPosicionServerRpc(gameObject.name, posicionDrop, seguiaEnCaja, municionRestante, bateriaRestante);
         }
         else
         {
