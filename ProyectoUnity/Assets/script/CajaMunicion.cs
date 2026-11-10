@@ -100,10 +100,11 @@ public class CajaMunicion : MonoBehaviour
         if (jugador == null) return;
         if (jugador.IsSpawned && !jugador.IsOwner) return;
 
-        Arma arma = jugador.armaEquipada;
-        if (arma == null || arma.EnCaja) return;
+        // Solo se puede acumular un cargador extra en el personaje; si ya tiene 1, la caja no se recoge.
+        // Nunca recarga el arma automaticamente: el jugador debe presionar R manualmente.
+        if (!jugador.PuedeGuardarCargadorExtra()) return;
 
-        if (arma.RecargarConCajaMunicion())
+        if (jugador.AgregarCargadorExtra())
         {
             Sonidos.Reproducir("recarga", transform.position, 0.95f, 1.12f);
             EstablecerDisponible(false);

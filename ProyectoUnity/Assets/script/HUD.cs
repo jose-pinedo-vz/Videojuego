@@ -43,6 +43,8 @@ public class HUD : MonoBehaviour
     private void ActualizarMunicionYArma()
     {
         Arma arma = jugadorLocal != null ? jugadorLocal.armaEquipada : null;
+        int cargadoresExtra = jugadorLocal != null ? jugadorLocal.CargadoresExtra : 0;
+        string sufijoCargador = cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg. [R]" : "";
 
         if (txt_arma != null)
             txt_arma.text = arma != null ? arma.NombreMostrado : "Sin arma";
@@ -51,11 +53,13 @@ public class HUD : MonoBehaviour
         {
             if (arma == null)
             {
-                txt_municion.text = "- / -";
+                txt_municion.text = cargadoresExtra > 0
+                    ? $"- / -  (+{cargadoresExtra} cargador extra)"
+                    : "- / -";
             }
             else if (arma.EnCaja)
             {
-                txt_municion.text = "Presiona V para romper";
+                txt_municion.text = "Presiona V para romper" + (cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg." : "");
             }
             else if (arma.Recargando)
             {
@@ -63,43 +67,47 @@ public class HUD : MonoBehaviour
             }
             else if (arma is ArmaMachete)
             {
-                txt_municion.text = "V: Tajar  |  F: Lanzar";
+                txt_municion.text = "V: Tajar  |  F: Lanzar" + (cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg." : "");
             }
             else if (arma is ArmaEscudo escudo)
             {
-                txt_municion.text = escudo.EstaEmpunado
+                string estadoEscudo = escudo.EstaEmpunado
                     ? "Empuñado (Cubre todo + Empuje)"
                     : "Pasivo (Mantén V para cubrir cabeza)";
+                txt_municion.text = estadoEscudo + (cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg." : "");
             }
             else if (arma.Modo == ModoDisparo.RayoContinuo)
             {
-                string extraRayo = arma.CargadoresExtra > 0 ? $" (+{arma.CargadoresExtra})" : "";
                 if (arma.CargandoRayo)
                 {
-                    txt_municion.text = $"Cargando: {arma.TiempoCargaActual:F1}s / {arma.TiempoCargaRequerido:F1}s{extraRayo}";
+                    txt_municion.text = $"Cargando: {arma.TiempoCargaActual:F1}s / {arma.TiempoCargaRequerido:F1}s{sufijoCargador}";
                 }
                 else if (arma.DisparandoRayo)
                 {
-                    txt_municion.text = $"Disparando: {arma.DuracionBateriaActual:F1}s / {arma.DuracionBateriaMaxima:F1}s{extraRayo}";
+                    txt_municion.text = $"Disparando: {arma.DuracionBateriaActual:F1}s / {arma.DuracionBateriaMaxima:F1}s{sufijoCargador}";
+                }
+                else if (arma.DuracionBateriaActual <= 0.01f && cargadoresExtra > 0)
+                {
+                    txt_municion.text = "Energía: 0.0s  [Presiona R para recargar]";
                 }
                 else
                 {
-                    txt_municion.text = $"Energía: {arma.DuracionBateriaActual:F1}s / {arma.DuracionBateriaMaxima:F1}s{extraRayo}";
+                    txt_municion.text = $"Energía: {arma.DuracionBateriaActual:F1}s / {arma.DuracionBateriaMaxima:F1}s{sufijoCargador}";
                 }
             }
             else
             {
-                if (arma.MunicionActual <= 0 && arma.CargadoresExtra <= 0)
+                if (arma.MunicionActual <= 0 && cargadoresExtra > 0)
+                {
+                    txt_municion.text = $"0 / {arma.MunicionMaxima}  [Presiona R para recargar]";
+                }
+                else if (arma.MunicionActual <= 0)
                 {
                     txt_municion.text = $"0 / {arma.MunicionMaxima} (Busca caja de munición)";
                 }
-                else if (arma.CargadoresExtra > 0)
-                {
-                    txt_municion.text = $"{arma.MunicionActual} / {arma.MunicionMaxima} (+{arma.CargadoresExtra} carg.)";
-                }
                 else
                 {
-                    txt_municion.text = arma.MunicionActual + " / " + arma.MunicionMaxima;
+                    txt_municion.text = $"{arma.MunicionActual} / {arma.MunicionMaxima}{sufijoCargador}";
                 }
             }
         }

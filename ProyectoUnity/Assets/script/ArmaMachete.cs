@@ -24,6 +24,8 @@ public class ArmaMachete : Arma
     private float anguloTajada;
     private Coroutine corrutinaTajada;
 
+    protected override bool EstaEnVuelo => enVuelo;
+
     protected override void Start()
     {
         if (Cadencia <= 0f) Cadencia = 3.6f;

@@ -270,10 +270,11 @@ public class GameManager : NetworkBehaviour
             partidaActiva = true;
             ordenMapas.Clear(); // la partida recorre todos los mapas desde cero
 
-            // marcador en cero al empezar, las bajas se acumulan entre mapas
+            // marcador en cero al empezar, las bajas se acumulan entre mapas; limpiar cargadores extra al iniciar nueva partida
             foreach (Personaje p in FindObjectsByType<Personaje>(FindObjectsSortMode.None))
             {
                 p.bajas.Value = 0;
+                p.ReiniciarCargadoresNuevaPartidaRpc();
             }
 
             iniciarRonda();
@@ -308,11 +309,19 @@ public class GameManager : NetworkBehaviour
     }
 
     [Rpc(SendTo.ClientsAndHost)]
-    public void SincronizarArmaSpawneadaClienteRpc(string nombreArma, Vector3 posicion, bool activar, bool enCaja)
+    public void SincronizarArmaSpawneadaClienteRpc(string nombreArma, Vector3 posicion, bool activar, bool enCaja, int municion, float bateria, bool esNuevaCajaEnSpawn)
     {
         GestorArmas ga = GestorArmas.Instancia;
         if (ga == null) ga = gameObject.AddComponent<GestorArmas>();
-        if (ga != null) ga.AplicarEstadoArmaRemoto(nombreArma, posicion, activar, enCaja);
+        if (ga != null) ga.AplicarEstadoArmaRemoto(nombreArma, posicion, activar, enCaja, municion, bateria, esNuevaCajaEnSpawn);
+    }
+
+    [Rpc(SendTo.Server)]
+    public void NotificarCajaArmaTomadaServerRpc(string nombreArma)
+    {
+        GestorArmas ga = GestorArmas.Instancia;
+        if (ga == null) ga = gameObject.AddComponent<GestorArmas>();
+        if (ga != null) ga.ProcesarCajaArmaTomadaServidor(nombreArma);
     }
 
     [Rpc(SendTo.Server)]

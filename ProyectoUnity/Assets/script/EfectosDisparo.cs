@@ -264,7 +264,11 @@ public class EfectosDisparo : MonoBehaviour
         float tono = 1f;
         string clave = "disparo_" + n;
 
-        if (n.Contains("antitanq"))
+        if (n.Contains("ak47") || n == "ak")
+        {
+            clave = "disparo_ak47";
+        }
+        else if (n.Contains("antitanq"))
         {
             clave = "disparo_antitanques";
             tono = 0.85f;

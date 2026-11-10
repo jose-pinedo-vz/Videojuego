@@ -2907,6 +2907,7 @@ MonoBehaviour:
   Alcance: 80
   Retroceso: -2
   Dispersion: 0
+  perdigonesPorDisparo: 1
   modoDisparo: 2
   tiempoCargaRequerido: 3
   duracionBateriaMaxima: 10
@@ -3610,6 +3611,7 @@ MonoBehaviour:
   Alcance: 4
   Retroceso: -2
   Dispersion: 0.5
+  perdigonesPorDisparo: 1
   modoDisparo: 1
   tiempoCargaRequerido: 3
   duracionBateriaMaxima: 10
@@ -5294,6 +5296,7 @@ MonoBehaviour:
   Alcance: 15
   Retroceso: -2
   Dispersion: 0.1
+  perdigonesPorDisparo: 1
   modoDisparo: 0
   tiempoCargaRequerido: 3
   duracionBateriaMaxima: 10
@@ -6452,6 +6455,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GestorArmas
   ShowTopMostFoldoutHeaderGroup: 1
   maxArmasActivas: 5
+  maxCajasMunicionActivas: 3
+  tiempoReaparicionMunicion: 12
   todasLasArmas:
   - {fileID: 1486263172}
   - {fileID: 1201119087}
@@ -6944,6 +6949,7 @@ MonoBehaviour:
   Alcance: 7.5
   Retroceso: -2
   Dispersion: 2.5
+  perdigonesPorDisparo: 1
   modoDisparo: 1
   tiempoCargaRequerido: 3
   duracionBateriaMaxima: 10
@@ -9277,6 +9283,7 @@ MonoBehaviour:
   Alcance: 5.5
   Retroceso: -2
   Dispersion: 0.8
+  perdigonesPorDisparo: 1
   modoDisparo: 0
   tiempoCargaRequerido: 3
   duracionBateriaMaxima: 10

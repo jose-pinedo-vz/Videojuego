@@ -43,9 +43,11 @@ public class GestorSonido : MonoBehaviour
     private const string PistaPartidaPrincipal = "Throttle_Locked_Open";
     private static readonly string[] PistasPartida = new string[]
     {
-        "Throttle_Locked_Open",          // Phonk
-        "Pisteando_hasta_que_aguante",   // Electro cumbia
-        "Gilded_Knuckles"                // Instrumental trap
+        "Throttle_Locked_Open",                              // Phonk
+        "Pisteando_hasta_que_aguante",                       // Electro cumbia
+        "Gilded_Knuckles",                                   // Instrumental trap
+        "115 (playlist para partida)",                       // Nueva 1
+        "la pelea con el diablo (playlist para partida)"     // Nueva 2
     };
     private const float VolumenMusicaPartidaInicial = 0.04f;
     private const float VolumenMusicaPartidaObjetivo = 0.24f;
@@ -101,6 +103,8 @@ public class GestorSonido : MonoBehaviour
         CargarClipEditorSiFalta("Throttle_Locked_Open", "Assets/Audio/Throttle_Locked_Open.mp3");
         CargarClipEditorSiFalta("Pisteando_hasta_que_aguante", "Assets/Audio/Pisteando_hasta_que_aguante.mp3");
         CargarClipEditorSiFalta("Gilded_Knuckles", "Assets/Audio/Gilded_Knuckles.mp3");
+        CargarClipEditorSiFalta("115 (playlist para partida)", "Assets/Audio/115 (playlist para partida).mp3");
+        CargarClipEditorSiFalta("la pelea con el diablo (playlist para partida)", "Assets/Audio/la pelea con el diablo (playlist para partida).mp3");
         CargarClipEditorSiFalta("ak47 shoot sound", "Assets/Audio/ak47 shoot sound.mp3");
         CargarClipEditorSiFalta("barret soot sound", "Assets/Audio/barret soot sound.mp3");
         CargarClipEditorSiFalta("beretta shoot efect", "Assets/Audio/beretta shoot efect.mp3");
