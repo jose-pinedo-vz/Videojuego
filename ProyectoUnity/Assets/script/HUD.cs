@@ -55,7 +55,7 @@ public class HUD : MonoBehaviour
             }
             else if (arma.EnCaja)
             {
-                txt_municion.text = "Presiona V para romper";
+                txt_municion.text = "Presiona " + AjustesJuego.NombreTecla(Accion.Disparar) + " para romper";
             }
             else if (arma.Recargando)
             {
@@ -63,13 +63,13 @@ public class HUD : MonoBehaviour
             }
             else if (arma is ArmaMachete)
             {
-                txt_municion.text = "V: Tajar  |  F: Lanzar";
+                txt_municion.text = AjustesJuego.NombreTecla(Accion.Disparar) + ": Tajar  |  " + AjustesJuego.NombreTecla(Accion.Secundaria) + ": Lanzar";
             }
             else if (arma is ArmaEscudo escudo)
             {
                 txt_municion.text = escudo.EstaEmpunado
                     ? "Empuñado (Cubre todo + Empuje)"
-                    : "Pasivo (Mantén V para cubrir cabeza)";
+                    : "Pasivo (Mantén " + AjustesJuego.NombreTecla(Accion.Disparar) + " para cubrir cabeza)";
             }
             else if (arma.Modo == ModoDisparo.RayoContinuo)
             {

@@ -18,6 +18,11 @@ public class inicio : MonoBehaviour
  
     // variables 
     public static string nombre = "";
+    // pantalla de reglas de la partida, la crea EstiloUI por codigo (no esta en la escena)
+    [System.NonSerialized] public GameObject PanelConfiguracion;
+    // pantallas de ajustes del menu principal, tambien creadas por EstiloUI
+    [System.NonSerialized] public GameObject PanelAjustesVolumen;
+    [System.NonSerialized] public GameObject PanelAjustesTeclado;
     private bool reiniciando = false;
     public TextMeshProUGUI txt_tiempo;
 
@@ -75,6 +80,7 @@ public class inicio : MonoBehaviour
         for (int i = 0; i < mapas.Count; i++)
         {
             mapas[i].SetActive(i == indice);
+            if (i == indice) SueloMapa.Reforzar(mapas[i]); // pisos planos del mapa con caja solida debajo
         }
     }
 
@@ -139,6 +145,7 @@ public class inicio : MonoBehaviour
         while (nm != null && nm.ShutdownInProgress) yield return null;
 
         nombre = "";
+        ConfiguracionPartida.Restablecer();
         UnityEngine.SceneManagement.SceneManager.LoadScene(gameObject.scene.name);
     }
 
@@ -181,6 +188,9 @@ public class inicio : MonoBehaviour
         if (PanelCliente != null) PanelCliente.SetActive(false);
         if (PanelHost != null) PanelHost.SetActive(false);
         if (PanelSeleccion != null) PanelSeleccion.SetActive(false);
+        if (PanelConfiguracion != null) PanelConfiguracion.SetActive(false);
+        if (PanelAjustesVolumen != null) PanelAjustesVolumen.SetActive(false);
+        if (PanelAjustesTeclado != null) PanelAjustesTeclado.SetActive(false);
         if (PantallaDeCarga != null) PantallaDeCarga.SetActive(false);
 
         //if (PanelFIn != null) PanelFin.SetActive(false);
@@ -228,6 +238,9 @@ public class inicio : MonoBehaviour
         PanelCliente.SetActive(false);
         PantallaDeCarga.SetActive(false);
         PanelFin.SetActive(false);
+        if (PanelConfiguracion != null) PanelConfiguracion.SetActive(false);
+        if (PanelAjustesVolumen != null) PanelAjustesVolumen.SetActive(false);
+        if (PanelAjustesTeclado != null) PanelAjustesTeclado.SetActive(false);
 
         // Mantenemos únicamente el panel principal encendido
         PanelInicio.SetActive(true);
@@ -273,7 +286,54 @@ public class inicio : MonoBehaviour
     // crear host
     // se espera que el host cree la sala y este a la espera de invitados
     // se iniciarn los servicios de unity y se creara un codigo para que los invitados puedan unirse a la sala
-    public async void crearSala()
+    // Ajustes: solo desde el menu principal, nunca durante una partida
+    public void abrirAjustesVolumen()
+    {
+        abrirAjustes(PanelAjustesVolumen);
+    }
+
+    public void abrirAjustesTeclado()
+    {
+        abrirAjustes(PanelAjustesTeclado);
+    }
+
+    private void abrirAjustes(GameObject panel)
+    {
+        if (panel == null || PanelInicio == null) return;
+        PanelInicio.SetActive(false);
+        panel.SetActive(true);
+    }
+
+    // "Atras" en cualquier pantalla de ajustes: se guarda lo pendiente y se vuelve al menu
+    public void cerrarAjustes()
+    {
+        AjustesJuego.GuardarSiHuboCambios();
+        if (PanelAjustesVolumen != null) PanelAjustesVolumen.SetActive(false);
+        if (PanelAjustesTeclado != null) PanelAjustesTeclado.SetActive(false);
+        if (PanelInicio != null) PanelInicio.SetActive(true);
+    }
+
+    // "Crear sala" primero abre la pantalla de configuracion; la sala se crea al confirmarla
+    public void crearSala()
+    {
+        if (PanelConfiguracion == null) { crearSalaConConfiguracion(); return; }
+        PanelSeleccion.SetActive(false);
+        PanelConfiguracion.SetActive(true);
+    }
+
+    public void cancelarConfiguracion()
+    {
+        if (PanelConfiguracion != null) PanelConfiguracion.SetActive(false);
+        PanelSeleccion.SetActive(true);
+    }
+
+    public void confirmarConfiguracion()
+    {
+        if (PanelConfiguracion != null) PanelConfiguracion.SetActive(false);
+        crearSalaConConfiguracion();
+    }
+
+    private async void crearSalaConConfiguracion()
     {
         // creacion de la sala y el host
 
@@ -284,7 +344,7 @@ public class inicio : MonoBehaviour
         txt_codigo.text = "Generando codigo ...";
         
         //NetWork.iniciarHost();
-        string code=await net.iniciarRelay();
+        string code=await net.iniciarRelay(ConfiguracionPartida.maxJugadores);
         txt_codigo.text = code != null ? "Code: " + code : "No se pudo crear la sala, revisa tu conexion";
 
         

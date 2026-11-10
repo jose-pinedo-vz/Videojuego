@@ -168,7 +168,7 @@ public class AnimadorArma : MonoBehaviour
         recargandoAnterior = arma.Recargando;
 
         if (EsLocal() && !arma.EnCaja && !arma.Recargando && arma.MunicionMaxima > 0 && arma.MunicionActual <= 0
-            && Keyboard.current != null && Keyboard.current.vKey.wasPressedThisFrame)
+            && Keyboard.current != null && AjustesJuego.RecienPresionada(Accion.Disparar))
         {
             Sonidos.Reproducir("sin_municion", pos, 0.8f);
         }

@@ -38,6 +38,7 @@ public class GameManager : NetworkBehaviour
     private List<Vector3> spawnsDisponibles = new List<Vector3>(); // los que nadie ha ocupado
     private List<int> ordenMapas = new List<int>(); // mapas que faltan por jugarse, ya mezclados
     private int ultimoMapa = -1;
+    private int rondasRestantes = 0; // mapas que faltan por jugar segun la configuracion del host
 
     // Registro en servidor para asignar uno de los 4 personajes (Cheto, Kaiser, Dorito, CR7) al azar sin repetir
     private readonly Dictionary<ulong, int> personajePorCliente = new Dictionary<ulong, int>();
@@ -268,7 +269,10 @@ public class GameManager : NetworkBehaviour
         if (NetworkManager.Singleton.IsServer)
         {
             partidaActiva = true;
-            ordenMapas.Clear(); // la partida recorre todos los mapas desde cero
+            ordenMapas.Clear(); // la partida recorre los mapas desde cero
+            if (texto == null) texto = FindFirstObjectByType<inicio>();
+            int disponibles = texto != null ? texto.Mapas.Count : 1;
+            rondasRestantes = ConfiguracionPartida.MapasAJugar(disponibles); // reglas del host
 
             // marcador en cero al empezar, las bajas se acumulan entre mapas
             foreach (Personaje p in FindObjectsByType<Personaje>(FindObjectsSortMode.None))
@@ -283,7 +287,8 @@ public class GameManager : NetworkBehaviour
     // Una ronda es un mapa con su tiempo, se llama al empezar la partida y al acabarse el tiempo de cada mapa
     private void iniciarRonda()
     {
-        tiempoRestante.Value = 60f;
+        tiempoRestante.Value = ConfiguracionPartida.duracionSegundos;
+        rondasRestantes--;
 
         // El servidor elige el mapa y se lo avisa a todos en iniciarClienteRpc
         int cantidadMapas = texto != null ? texto.Mapas.Count : 0;
@@ -433,8 +438,8 @@ public class GameManager : NetworkBehaviour
                 tiempoRestante.Value = 0f;
                 Debug.Log("Se acabó el tiempo");
 
-                // La partida solo termina cuando ya se jugaron todos los mapas
-                if (ordenMapas.Count > 0)
+                // La partida solo termina cuando ya se jugaron todos los mapas elegidos por el host
+                if (rondasRestantes > 0)
                 {
                     iniciarRonda();
                 }
