@@ -37,8 +37,9 @@ Compilar/validar sin abrir el editor:
 | `Arma.cs` | `Arma` | Recoger (C), disparar (V) por raycast, trazo (LineRenderer). |
 | `CamaraSeguir.cs` | `CamaraSeguir` | Cámara sigue al jugador local en X/Y. |
 | `movimientoJugador.cs` | `JugadorMovimiento` | Movimiento viejo (desactivado en el prefab). |
+| `AjustesJuego.cs` / `AjustesUI.cs` | `AjustesJuego`, `Accion` | Volúmenes y teclas reasignables, guardados en `ajustes.json` (`Application.persistentDataPath`). Las pantallas se abren desde el menú principal. |
 
-Controles: A/D mover, W saltar, Shift deslizar (en movimiento) / agacharse (quieto), C recoger arma, V disparar, en el lobby (pantalla de nombres) se elige personaje con 4 botones.
+Controles (por defecto; se cambian en "Ajustes de teclado" y se leen con `AjustesJuego.Presionada/RecienPresionada(Accion.X)`, nunca con `Keyboard.current.xKey`): A/D mover, W saltar, Shift deslizar (en movimiento) / agacharse (quieto), C recoger arma, V disparar, en el lobby (pantalla de nombres) se elige personaje con 4 botones.
 
 ## Animator (`Assets/PersonajeAnimator.controller`)
 

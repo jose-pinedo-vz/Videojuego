@@ -186,6 +186,18 @@ public class GestorSonido : MonoBehaviour
         return false;
     }
 
+    // 100% de musica = GANANCIA_MAXIMA_MUSICA veces el volumen base de las pistas
+    private static float GananciaMusica()
+    {
+        return AjustesJuego.Musica * AjustesJuego.GANANCIA_MAXIMA_MUSICA;
+    }
+
+    // guarda los ajustes pendientes al cerrar el juego (por si se cerro la ventana sin volver al menu)
+    private void OnApplicationQuit()
+    {
+        AjustesJuego.GuardarSiHuboCambios();
+    }
+
     private AudioSource NuevaFuente(bool bucle)
     {
         AudioSource a = gameObject.AddComponent<AudioSource>();
@@ -209,7 +221,7 @@ public class GestorSonido : MonoBehaviour
         siguiente = (siguiente + 1) % pool.Length;
         a.pitch = tono * Random.Range(0.96f, 1.04f);
         a.panStereo = 0f;
-        a.volume = Mathf.Clamp01(volumen);
+        a.volume = Mathf.Clamp01(volumen * AjustesJuego.Efectos); // ajuste de efectos del jugador
         a.clip = clip;
         a.Play();
     }
@@ -224,9 +236,9 @@ public class GestorSonido : MonoBehaviour
             CambiarAmbienteSegunMapa();
         }
 
-        if (Keyboard.current != null && Keyboard.current.mKey.wasPressedThisFrame) musicaActiva = !musicaActiva;
+        if (Keyboard.current != null && AjustesJuego.RecienPresionada(Accion.Musica)) musicaActiva = !musicaActiva;
 
-        Cruzar(ambienteA, ambienteB, ambienteActual, VolumenAmbiente);
+        Cruzar(ambienteA, ambienteB, ambienteActual, VolumenAmbiente * AjustesJuego.Efectos);
         CruzarMusica();
         SonidosSueltos();
     }
@@ -314,7 +326,7 @@ public class GestorSonido : MonoBehaviour
         // Las pistas de la cola de partida no hacen loop individual para encadenar hacia la siguiente pista aleatoria
         nueva.loop = !EsPistaPartida(nombre);
         nueva.time = 0f;
-        nueva.volume = (EsPistaPartida(nombre) && musicaActiva) ? VolumenMusicaPartidaInicial : 0f;
+        nueva.volume = (EsPistaPartida(nombre) && musicaActiva) ? Mathf.Clamp01(VolumenMusicaPartidaInicial * GananciaMusica()) : 0f;
         nueva.Play();
         return nueva;
     }
@@ -330,11 +342,17 @@ public class GestorSonido : MonoBehaviour
             return;
         }
 
+        // el volumen de musica que eligio el jugador multiplica el volumen base de las pistas (tope 1 de AudioSource)
+        float ganancia = GananciaMusica();
         bool esCancionPartida = EsPistaPartida(pistaActual);
-        float objetivo = esCancionPartida ? VolumenMusicaPartidaObjetivo : VolumenMusicaMenu;
+        float objetivo = Mathf.Clamp01((esCancionPartida ? VolumenMusicaPartidaObjetivo : VolumenMusicaMenu) * ganancia);
         float pasoSubida = esCancionPartida
-            ? ((VolumenMusicaPartidaObjetivo - VolumenMusicaPartidaInicial) / TiempoSubidaMusicaPartida) * Time.unscaledDeltaTime
-            : (VolumenMusicaMenu / TiempoCruce) * Time.unscaledDeltaTime;
+            ? ((VolumenMusicaPartidaObjetivo - VolumenMusicaPartidaInicial) * ganancia / TiempoSubidaMusicaPartida) * Time.unscaledDeltaTime
+            : (VolumenMusicaMenu * ganancia / TiempoCruce) * Time.unscaledDeltaTime;
+
+        // la subida lenta de 8 s es solo al empezar la cancion; despues el slider de ajustes se nota enseguida
+        float minimo = Time.unscaledDeltaTime * 1.5f;
+        if (pasoSubida < minimo && !(esCancionPartida && musicaActual.time < TiempoSubidaMusicaPartida)) pasoSubida = minimo;
 
         AudioSource anterior = musicaActual == musicaA ? musicaB : musicaA;
         Mover(anterior, musicaActual, 0f, pasoSalida);
@@ -399,6 +417,6 @@ public class GestorSonido : MonoBehaviour
         if (!clips.TryGetValue(opciones[Random.Range(0, opciones.Length)], out AudioClip clip)) return;
         sueltos.pitch = Random.Range(0.9f, 1.1f);
         sueltos.panStereo = Random.Range(-0.6f, 0.6f);
-        sueltos.PlayOneShot(clip, Random.Range(0.35f, 0.6f));
+        sueltos.PlayOneShot(clip, Random.Range(0.35f, 0.6f) * AjustesJuego.Efectos);
     }
 }

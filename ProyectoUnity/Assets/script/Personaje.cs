@@ -34,10 +34,9 @@ public class Personaje : NetworkBehaviour
     protected Vector3 posicionInicial;
     protected Vector3 ultimaPosicionSegura; // ultimo punto donde estuvo pisando suelo, para recuperarse de una caida
 
-    // Estados de empuje (Escudo Troyano / retroceso de disparo) y resbalon (Cascara de Platano)
+    // Estados de empuje (Escudo Troyano / retroceso de disparo) y resbalon ragdoll (Cascara de Platano)
     private Vector3 velocidadEmpuje;
-    private float tiempoFinResbalonPlatano;
-    public bool EstaResbalandoPlatano => Time.time < tiempoFinResbalonPlatano;
+    public bool EstaResbalandoPlatano => EnRagdoll;
 
     // Almacen de cargador extra en el personaje (maximo 1 universal; se conserva al soltar/cambiar arma y se pierde al morir)
     public const int MAX_CARGADORES_EXTRA = 1;
@@ -64,7 +63,7 @@ public class Personaje : NetworkBehaviour
     private bool muriendo = false;
     private const float DURACION_MUERTE = 1.1f; // segundos que dura el modelo hecho pedazos antes de reaparecer
     private const int CUBOS_MUERTE = 22;       // cantidad de cubitos en que se rompe el modelo
-    private const float DISTANCIA_CAIDA = 25f; // cuanto puede bajar del spawn antes de considerarse caido del mapa
+    private const float DISTANCIA_CAIDA = 12f; // cuanto puede bajar del ultimo suelo pisado antes de considerarse caido del mapa
 
     // bajas (kills) del jugador, solo el servidor las escribe y todos las leen para el marcador
     public NetworkVariable<int> bajas = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
@@ -136,6 +135,7 @@ public class Personaje : NetworkBehaviour
         if (IsSpawned && !IsOwner) return; // un objeto por equipo en red
         if (!TieneModeloVisible()) return; // espera a que empeise la partida
         if (muriendo) return; // en plena animacion de muerte no se mueve
+        if (EnRagdoll) return; // tirado como muñeco, no se controla
 
 
 
@@ -155,7 +155,7 @@ public class Personaje : NetworkBehaviour
         //teclas especiales para funciones
         if (!estaDeslizando)
         {
-        if (controlador.isGrounded && Keyboard.current.wKey.wasPressedThisFrame)
+        if (controlador.isGrounded && AjustesJuego.RecienPresionada(Accion.Saltar))
         {
             Saltar();
         }
@@ -163,30 +163,30 @@ public class Personaje : NetworkBehaviour
 
         if (armaEquipada != null && Keyboard.current != null)
         {
-            bool presionandoV = Keyboard.current.vKey.isPressed;
-            bool presionoV = Keyboard.current.vKey.wasPressedThisFrame;
-            bool soltoV = Keyboard.current.vKey.wasReleasedThisFrame;
+            bool presionandoV = AjustesJuego.Presionada(Accion.Disparar);
+            bool presionoV = AjustesJuego.RecienPresionada(Accion.Disparar);
+            bool soltoV = AjustesJuego.RecienSoltada(Accion.Disparar);
 
             armaEquipada.ProcesarEntradaDisparo(presionandoV, presionoV, soltoV);
 
             // Entrada secundaria (tecla F o clic derecho, ej. para lanzar el machete)
             if (armaEquipada != null)
             {
-                bool presionoF = Keyboard.current.fKey.wasPressedThisFrame
+                bool presionoF = AjustesJuego.RecienPresionada(Accion.Secundaria)
                     || (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame);
-                bool presionandoF = Keyboard.current.fKey.isPressed
+                bool presionandoF = AjustesJuego.Presionada(Accion.Secundaria)
                     || (Mouse.current != null && Mouse.current.rightButton.isPressed);
                 armaEquipada.ProcesarEntradaSecundaria(presionoF, presionandoF);
             }
         }
 
-        if (armaEquipada != null && !armaEquipada.EnCaja && Keyboard.current.rKey.wasPressedThisFrame) //Recargar
+        if (armaEquipada != null && !armaEquipada.EnCaja && AjustesJuego.RecienPresionada(Accion.Recargar)) //Recargar
         {
             armaEquipada.IniciarRecarga();
         }
 
         // Si tiene arma equipada y presiona C, la suelta
-        if (armaEquipada != null && Keyboard.current.cKey.wasPressedThisFrame && armaEquipada.TiempoRecogida <= 0f)
+        if (armaEquipada != null && AjustesJuego.RecienPresionada(Accion.Recoger) && armaEquipada.TiempoRecogida <= 0f)
         {
             Debug.Log("Tecla C presionada para soltar arma");
             armaEquipada.SoltarVoluntariamente();
@@ -219,11 +219,11 @@ public class Personaje : NetworkBehaviour
         if (estaDeslizando) return;
         
         float movimiento = 0f;
-        if (Keyboard.current.aKey.isPressed) 
+        if (AjustesJuego.Presionada(Accion.Izquierda)) 
         { 
             movimiento = 1f;
         } 
-        else if (Keyboard.current.dKey.isPressed) 
+        else if (AjustesJuego.Presionada(Accion.Derecha)) 
         {
             movimiento = -1f; 
         } //Agarra las teclas a,d o <-,->, para el movimiento
@@ -243,8 +243,8 @@ public class Personaje : NetworkBehaviour
         animCorriendo.Value = (movimiento != 0f) && !estaDeslizando;
 
         bool resbalandoPlatano = EstaResbalandoPlatano;
-        bool shiftPresionado = Keyboard.current.leftShiftKey.isPressed; //Si se mantiene presionao
-        bool shiftRecienPresionado = Keyboard.current.leftShiftKey.wasPressedThisFrame; //Si solo lo presiono una vez
+        bool shiftPresionado = AjustesJuego.Presionada(Accion.Deslizar); //Si se mantiene presionao
+        bool shiftRecienPresionado = AjustesJuego.RecienPresionada(Accion.Deslizar); //Si solo lo presiono una vez
         
         if (shiftRecienPresionado && !estaAgachado && !resbalandoPlatano) //Si presiono shift y no esta agachado ni resbalando
         {
@@ -342,7 +342,7 @@ public class Personaje : NetworkBehaviour
         estaDeslizando = false;
         animDeslizando.Value = false;
 
-        if (Keyboard.current.leftShiftKey.isPressed) //Si no dejo de presionar shift se queda agachado
+        if (AjustesJuego.Presionada(Accion.Deslizar)) //Si no dejo de presionar shift se queda agachado
         {
             Agachar(true);
         }
@@ -579,22 +579,69 @@ public class Personaje : NetworkBehaviour
         LimpiarCargadoresExtra();
     }
 
+    // Pisar una cascara: explosion pequena que lo tira y lo deja como muñeco de plastilina (ragdoll) unos segundos.
+    // No quita vida, no es mortal.
+    private RagdollPlastilina ragdoll;
+    public bool EnRagdoll => ragdoll != null && ragdoll.Activo;
+    private const float DURACION_RAGDOLL = 3f;
+
     public void RecibirResbalonPlatano(float duracion)
     {
-        if (!IsSpawned || IsOwner)
-        {
-            tiempoFinResbalonPlatano = Mathf.Max(tiempoFinResbalonPlatano, Time.time + duracion);
-        }
-        else
-        {
-            AplicarResbalonPlatanoOwnerRpc(duracion);
-        }
+        RecibirResbalonPlatano(duracion, transform.position);
+    }
+
+    // origenCascara: donde estaba la cascara, de ahi sale la "explosion" que lo despide
+    public void RecibirResbalonPlatano(float duracion, Vector3 origenCascara)
+    {
+        if (!IsSpawned || IsOwner) IniciarCaidaPlatano(origenCascara);
+        else AplicarResbalonPlatanoOwnerRpc(origenCascara);
     }
 
     [Rpc(SendTo.Owner)]
-    private void AplicarResbalonPlatanoOwnerRpc(float duracion)
+    private void AplicarResbalonPlatanoOwnerRpc(Vector3 origenCascara)
     {
-        tiempoFinResbalonPlatano = Mathf.Max(tiempoFinResbalonPlatano, Time.time + duracion);
+        IniciarCaidaPlatano(origenCascara);
+    }
+
+    private void IniciarCaidaPlatano(Vector3 origenCascara)
+    {
+        if (muriendo || EnRagdoll) return; // ya esta en el suelo o muriendo
+
+        // sale despedido lejos de la cascara y hacia arriba; si estaba justo encima, hacia atras de donde mira
+        float lado = transform.position.x - origenCascara.x;
+        float dirX = Mathf.Abs(lado) > 0.05f ? Mathf.Sign(lado) : -DireccionHorizontal;
+        Vector3 direccion = new Vector3(dirX * 0.6f, 1f, 0f);
+
+        IniciarRagdoll(direccion, true);
+        if (IsSpawned) IniciarRagdollVisualRpc(direccion);
+    }
+
+    // los demas jugadores ven el ragdoll en su pantalla
+    [Rpc(SendTo.NotOwner)]
+    private void IniciarRagdollVisualRpc(Vector3 direccion)
+    {
+        IniciarRagdoll(direccion, false);
+    }
+
+    private void IniciarRagdoll(Vector3 direccion, bool esDuenio)
+    {
+        if (ragdoll == null) ragdoll = gameObject.AddComponent<RagdollPlastilina>();
+        RefrescarAnimator();
+        ragdoll.Iniciar(this, animator, controlador, direccion, DURACION_RAGDOLL, esDuenio);
+    }
+
+    // lo llama el ragdoll al acabar: el duenio se levanta donde cayo, los demas solo recuperan el CharacterController
+    public void AlTerminarRagdoll(Vector3 destino, bool esDuenioYLevantarse)
+    {
+        if (esDuenioYLevantarse)
+        {
+            Teletransportar(destino);
+            ultimaPosicionSegura = destino;
+        }
+        else if (controlador != null)
+        {
+            controlador.enabled = true;
+        }
     }
 
     [Rpc(SendTo.Everyone)]
@@ -754,6 +801,7 @@ public class Personaje : NetworkBehaviour
     private IEnumerator MorirYReaparecer(Vector3 destino)
     {
         muriendo = true;
+        if (EnRagdoll) ragdoll.Terminar(false); // si moria en pleno ragdoll, primero se arma el cuerpo de nuevo
         velocidadCaida = Vector3.zero;
         velocidadEmpuje = Vector3.zero;
         LimpiarCargadoresExtra();
@@ -782,25 +830,69 @@ public class Personaje : NetworkBehaviour
     private void RecuperarDeCaida()
     {
         if (controlador.isGrounded) ultimaPosicionSegura = transform.position;
-        if (transform.position.y < posicionInicial.y - DISTANCIA_CAIDA) Teletransportar(ultimaPosicionSegura);
+        if (transform.position.y < ultimaPosicionSegura.y - DISTANCIA_CAIDA) Teletransportar(ultimaPosicionSegura);
     }
 
-    // Si el spawn quedo flotando o debajo del piso, se mueve al piso mas cercano (hasta 3 m arriba)
+    // Coloca el spawn sobre el piso: si quedo dentro de un objeto lo sube hasta un hueco libre,
+    // y si quedo flotando lo baja hasta la primera superficie solida (hasta 40 m abajo)
     private void AjustarSpawnAlSuelo()
     {
-        Vector3 p = transform.position;
-        if (Physics.Raycast(p + Vector3.up * 0.3f, Vector3.down, 3f, ~0, QueryTriggerInteraction.Ignore)) return;
+        Vector3 origen = transform.position;
+        Vector3 p = origen;
 
-        if (Physics.Raycast(p + Vector3.up * 3f, Vector3.down, out RaycastHit golpe, 6f, ~0, QueryTriggerInteraction.Ignore))
+        // 1) Si esta metido dentro de algo (banca, piedras...), subir hasta un lugar libre
+        int intentos = 0;
+        while (intentos < 40 && CapsulaOcupada(p))
         {
-            Debug.LogWarning("Spawn sin piso en " + p + ", se movio a " + golpe.point);
-            posicionInicial = golpe.point + Vector3.up * 0.1f;
-            Teletransportar(posicionInicial);
+            p += Vector3.up * 0.25f;
+            intentos++;
         }
-        else
+
+        // 2) Bajar hasta la primera superficie solida que no sea un jugador ni un arma
+        RaycastHit[] golpes = Physics.RaycastAll(p + Vector3.up * 0.2f, Vector3.down, 40f, ~0, QueryTriggerInteraction.Ignore);
+        float mejor = float.MaxValue;
+        Vector3 punto = p;
+        bool hayPiso = false;
+        foreach (RaycastHit h in golpes)
         {
-            Debug.LogWarning("El spawn " + p + " no tiene ningun piso cerca");
+            if (h.collider == null) continue;
+            if (h.collider.GetComponentInParent<Personaje>() != null) continue;
+            if (h.collider.GetComponentInParent<Arma>() != null) continue;
+            if (h.distance < mejor) { mejor = h.distance; punto = h.point; hayPiso = true; }
         }
+
+        if (!hayPiso)
+        {
+            Debug.LogWarning("El spawn " + origen + " no tiene ningun piso debajo");
+            return;
+        }
+
+        Vector3 destino = new Vector3(origen.x, punto.y + 0.1f, origen.z);
+        if ((destino - origen).sqrMagnitude < 0.0004f) return;
+
+        Debug.Log("Spawn ajustado al piso: " + origen + " -> " + destino);
+        posicionInicial = destino;
+        ultimaPosicionSegura = destino;
+        Teletransportar(destino);
+    }
+
+    // true si la capsula del jugador, puesta en la posicion p, choca con algo solido
+    private bool CapsulaOcupada(Vector3 p)
+    {
+        float escala = Mathf.Max(Mathf.Abs(transform.lossyScale.x), Mathf.Abs(transform.lossyScale.y));
+        float radio = Mathf.Max(0.05f, controlador.radius * escala * 0.9f);
+        float alto = Mathf.Max(radio * 2f, controlador.height * escala);
+        Vector3 centro = p + transform.rotation * Vector3.Scale(controlador.center, transform.lossyScale);
+        Vector3 desp = Vector3.up * (alto * 0.5f - radio);
+        Collider[] choques = Physics.OverlapCapsule(centro - desp, centro + desp, radio, ~0, QueryTriggerInteraction.Ignore);
+        foreach (Collider c in choques)
+        {
+            if (c == null) continue;
+            if (c.GetComponentInParent<Personaje>() != null) continue;
+            if (c.GetComponentInParent<Arma>() != null) continue;
+            return true;
+        }
+        return false;
     }
 
     // Mueve al jugador sin soltar el arma ni contar muerte

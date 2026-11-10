@@ -35,7 +35,8 @@ public class NetWork:MonoBehaviour
         try
         {
             // se asigna una sala con los maximos jugadores 
-            Allocation asignacion=await RelayService.Instance.CreateAllocationAsync(maxPlayers); 
+            // el numero que pide Relay son las conexiones de clientes, sin contar al host
+            Allocation asignacion=await RelayService.Instance.CreateAllocationAsync(Mathf.Max(1, maxPlayers - 1)); 
             string codigoSala=await RelayService.Instance.GetJoinCodeAsync(asignacion.AllocationId); // codigo
 
             // configuracion de la secion de red

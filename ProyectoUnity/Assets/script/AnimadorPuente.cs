@@ -36,13 +36,13 @@ public class AnimadorPuente : NetworkBehaviour
         bool deslizando = personaje != null && personaje.EstaDeslizando;
 
         float mov = 0f;
-        if (Keyboard.current.aKey.isPressed || Keyboard.current.dKey.isPressed || deslizando)
+        if (AjustesJuego.Presionada(Accion.Izquierda) || AjustesJuego.Presionada(Accion.Derecha) || deslizando)
         {
             mov = 1f;
         }
 
         // Indica si el personaje está corriendo (en movimiento horizontal)
-        bool estaCorriendo = (Keyboard.current.aKey.isPressed || Keyboard.current.dKey.isPressed) && !deslizando;
+        bool estaCorriendo = (AjustesJuego.Presionada(Accion.Izquierda) || AjustesJuego.Presionada(Accion.Derecha)) && !deslizando;
 
         bool agachado = personaje != null && personaje.EstaAgachado;
 
@@ -53,7 +53,7 @@ public class AnimadorPuente : NetworkBehaviour
         // animator.SetBool("estaAgachado",   agachado); // Parámetro no existe en el Animator
 
         // Solo saltar si está en suelo, no está deslizando, y presiona espacio
-        if (enSuelo && !deslizando && Keyboard.current.wKey.wasPressedThisFrame)
+        if (enSuelo && !deslizando && AjustesJuego.RecienPresionada(Accion.Saltar))
         {
             animator.SetTrigger("Saltar");
         }

@@ -1,0 +1,12 @@
+ESCENARIO COCHERA - texturas y scripts (todo en esta carpeta)
+Contenido: Texturas/ (PNG), Editor/ (CocheraTexturizador.cs + un script por grupo de objetos), Materiales/ (se crea sola).
+
+IMPORTANTE - Juego.unity guarda materiales viejos (T_*.mat) sobre la cochera. Si se borraron, todo sale rosa aunque el FBX tenga texturas.
+Instalacion:
+  1. Copiar Assets/Cochera dentro de Assets del proyecto.
+  2. Menu Herramientas > Cochera > Quitar materiales viejos de la escena (Juego.unity)   [una sola vez; modifica y guarda Juego.unity]
+  3. Menu Herramientas > Cochera > Texturizar toda la cochera
+Hecho hasta ahora: piso, paredes laterales, techo, las 11 cajas (cuerpo + tapa), los estantes de madera (tablas "tubos"), banca de trabajo, mesa pequena, escalera, rack pequeno, bote de basura, bicicleta, plataformas (Panel1-3: placa, poste y base) y tuberias.
+Lo que aun no tiene textura propia recibe un relleno temporal (acero / madera / goma) para que no salga rosa.
+No se toca la pared de fondo ("pared").
+Para quitar todo: borrar Assets/Cochera y reimportar Cochera.fbx.

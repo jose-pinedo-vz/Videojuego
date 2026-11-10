@@ -7,7 +7,7 @@ using UnityEngine.UI;
 // Da orden, colores y estilo a toda la interfaz (menus, HUD y pantalla final) al cargar la escena.
 // No hay que agregarlo a ningun objeto: se ejecuta solo si la escena tiene el script `inicio`.
 // Solo cambia posiciones, tamanos y colores; los textos y botones siguen siendo los de la escena.
-public static class EstiloUI
+public static partial class EstiloUI
 {
     // paleta
     private static readonly Color FondoPanel   = Hex("0E1117");
@@ -52,11 +52,15 @@ public static class EstiloUI
 
         // ---- Inicio: nombre y botones de jugar / salir ----
         Transform p = canvas.Find("Inicio");
-        EstiloPanel(p, new Vector2(640, 520));
-        EstiloTitulo(Texto(p, "Text (TMP)"), new Vector2(0, 170), new Vector2(560, 70), 44);
-        EstiloInput(Input(p, "InpuntNombre"), new Vector2(0, 60), new Vector2(420, 60));
-        EstiloBoton(Boton(p, "btn_iniciar"), true, new Vector2(0, -60), new Vector2(420, 70));
-        EstiloBoton(Boton(p, "btn_salir"), false, new Vector2(0, -155), new Vector2(420, 70));
+        EstiloPanel(p, new Vector2(640, 700));
+        EstiloTitulo(Texto(p, "Text (TMP)"), new Vector2(0, 270), new Vector2(560, 70), 44);
+        EstiloInput(Input(p, "InpuntNombre"), new Vector2(0, 165), new Vector2(420, 60));
+        EstiloBoton(Boton(p, "btn_iniciar"), true, new Vector2(0, 55), new Vector2(420, 70));
+        EstiloBoton(Boton(p, "btn_salir"), false, new Vector2(0, -225), new Vector2(420, 70));
+        // entre Jugar y Salir: ajustes de volumen y de teclado (se crean por codigo)
+        Button refBoton = Boton(p, "btn_iniciar");
+        TMP_Text refTexto = refBoton != null ? refBoton.GetComponentInChildren<TMP_Text>(true) : null;
+        if (p != null) CrearMenuAjustes(canvas, p, menu, refTexto != null ? refTexto.font : null);
 
         // ---- Seleccion: crear sala o unirse ----
         p = canvas.Find("Seleccion");
@@ -98,6 +102,111 @@ public static class EstiloUI
 
         // ---- cortina y nombre del mapa al empezar cada ronda ----
         CrearTransicionMapa(canvas, menu);
+
+        // ---- reglas de la partida (duracion, mapas, jugadores), antes de crear la sala ----
+        CrearPanelConfiguracion(canvas, menu);
+    }
+
+    // Pantalla de configuracion creada por codigo (la escena no se toca). Tres filas con - / + y botones Crear sala / Atras
+    private static void CrearPanelConfiguracion(Transform canvas, inicio menu)
+    {
+        Transform existente = canvas.Find("Configuracion");
+        if (existente != null) { menu.PanelConfiguracion = existente.gameObject; return; }
+
+        TMP_FontAsset fuente = menu.txt_tiempo != null ? menu.txt_tiempo.font : null;
+        if (fuente == null) fuente = menu.txt_inicio != null ? menu.txt_inicio.font : null;
+
+        GameObject panel = new GameObject("Configuracion", typeof(RectTransform), typeof(Image));
+        panel.transform.SetParent(canvas, false);
+        RectTransform rp = (RectTransform)panel.transform;
+        rp.anchorMin = Vector2.zero;
+        rp.anchorMax = Vector2.one;
+        rp.offsetMin = rp.offsetMax = Vector2.zero;
+        EstiloPanel(panel.transform, new Vector2(760, 680));
+
+        TextMeshProUGUI titulo = CrearTextoSimple(panel.transform, "Titulo", fuente, "Configurar partida");
+        EstiloTitulo(titulo, new Vector2(0, 270), new Vector2(680, 70), 44);
+
+        int mapasDisponibles = Mathf.Max(1, menu.Mapas.Count);
+        if (ConfiguracionPartida.cantidadMapas <= 0) ConfiguracionPartida.cantidadMapas = mapasDisponibles;
+
+        // fila 1: duracion de cada mapa
+        TextMeshProUGUI vDuracion = null;
+        FilaConfiguracion(panel.transform, fuente, "Duración por mapa", 130,
+            () => ConfiguracionPartida.FormatearDuracion(ConfiguracionPartida.duracionSegundos),
+            d => ConfiguracionPartida.duracionSegundos = Mathf.Clamp(ConfiguracionPartida.duracionSegundos + d * ConfiguracionPartida.DURACION_PASO, ConfiguracionPartida.DURACION_MIN, ConfiguracionPartida.DURACION_MAX),
+            out vDuracion);
+
+        // fila 2: cuantos mapas se juegan
+        TextMeshProUGUI vMapas = null;
+        FilaConfiguracion(panel.transform, fuente, "Mapas a jugar", 20,
+            () => ConfiguracionPartida.MapasAJugar(mapasDisponibles).ToString() + " / " + mapasDisponibles,
+            d => ConfiguracionPartida.cantidadMapas = Mathf.Clamp(ConfiguracionPartida.MapasAJugar(mapasDisponibles) + d, 1, mapasDisponibles),
+            out vMapas);
+
+        // fila 3: jugadores maximos, de 2 a 4
+        TextMeshProUGUI vJugadores = null;
+        FilaConfiguracion(panel.transform, fuente, "Jugadores máximos", -90,
+            () => ConfiguracionPartida.maxJugadores.ToString(),
+            d => ConfiguracionPartida.maxJugadores = Mathf.Clamp(ConfiguracionPartida.maxJugadores + d, ConfiguracionPartida.JUGADORES_MIN, ConfiguracionPartida.JUGADORES_MAX),
+            out vJugadores);
+
+        Button crear = CrearBotonSimple(panel.transform, "btn_confirmarConfig", fuente, "Crear sala");
+        crear.onClick.AddListener(menu.confirmarConfiguracion);
+        EstiloBoton(crear, true, new Vector2(0, -205), new Vector2(420, 70));
+
+        Button atras = CrearBotonSimple(panel.transform, "btn_atrasConfig", fuente, "Atrás");
+        atras.onClick.AddListener(menu.cancelarConfiguracion);
+        EstiloBoton(atras, false, new Vector2(0, -290), new Vector2(420, 64));
+
+        menu.PanelConfiguracion = panel;
+        panel.SetActive(false);
+    }
+
+    // etiqueta a la izquierda y selector "- valor +" a la derecha; cambio(+1/-1) ajusta el dato y el texto se refresca solo
+    private static void FilaConfiguracion(Transform panel, TMP_FontAsset fuente, string etiqueta, float y,
+        System.Func<string> leer, System.Action<int> cambio, out TextMeshProUGUI valor)
+    {
+        TextMeshProUGUI txtEtiqueta = CrearTextoSimple(panel, "Etiqueta_" + etiqueta, fuente, etiqueta);
+        EstiloTexto(txtEtiqueta, new Vector2(-340, y), new Vector2(320, 60), 28, false, TextoClaro, TextAlignmentOptions.MidlineLeft);
+        txtEtiqueta.rectTransform.pivot = new Vector2(0f, 0.5f);
+        txtEtiqueta.rectTransform.anchorMin = txtEtiqueta.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        txtEtiqueta.rectTransform.anchoredPosition = new Vector2(-340, y);
+
+        TextMeshProUGUI txtValor = CrearTextoSimple(panel, "Valor_" + etiqueta, fuente, leer());
+        EstiloTexto(txtValor, new Vector2(150, y), new Vector2(150, 60), 34, true, Acento, TextAlignmentOptions.Center);
+        valor = txtValor;
+
+        Button menos = CrearBotonSimple(panel, "btn_menos_" + etiqueta, fuente, "-");
+        EstiloBoton(menos, false, new Vector2(40, y), new Vector2(64, 60));
+        menos.onClick.AddListener(() => { cambio(-1); txtValor.text = leer(); });
+
+        Button mas = CrearBotonSimple(panel, "btn_mas_" + etiqueta, fuente, "+");
+        EstiloBoton(mas, false, new Vector2(260, y), new Vector2(64, 60));
+        mas.onClick.AddListener(() => { cambio(1); txtValor.text = leer(); });
+    }
+
+    private static TextMeshProUGUI CrearTextoSimple(Transform padre, string nombre, TMP_FontAsset fuente, string texto)
+    {
+        GameObject go = new GameObject(nombre, typeof(RectTransform));
+        go.transform.SetParent(padre, false);
+        TextMeshProUGUI t = go.AddComponent<TextMeshProUGUI>();
+        if (fuente != null) t.font = fuente;
+        t.text = texto;
+        t.raycastTarget = false;
+        return t;
+    }
+
+    private static Button CrearBotonSimple(Transform padre, string nombre, TMP_FontAsset fuente, string texto)
+    {
+        GameObject go = new GameObject(nombre, typeof(RectTransform), typeof(Image), typeof(Button));
+        go.transform.SetParent(padre, false);
+        TextMeshProUGUI t = CrearTextoSimple(go.transform, "Text (TMP)", fuente, texto);
+        RectTransform rt = t.rectTransform;
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        return go.GetComponent<Button>();
     }
 
 

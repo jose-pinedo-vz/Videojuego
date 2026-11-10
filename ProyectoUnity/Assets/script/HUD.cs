@@ -44,7 +44,10 @@ public class HUD : MonoBehaviour
     {
         Arma arma = jugadorLocal != null ? jugadorLocal.armaEquipada : null;
         int cargadoresExtra = jugadorLocal != null ? jugadorLocal.CargadoresExtra : 0;
-        string sufijoCargador = cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg. [R]" : "";
+        string teclaDisparar = AjustesJuego.NombreTecla(Accion.Disparar);
+        string teclaSecundaria = AjustesJuego.NombreTecla(Accion.Secundaria);
+        string teclaRecargar = AjustesJuego.NombreTecla(Accion.Recargar);
+        string sufijoCargador = cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg. [{teclaRecargar}]" : "";
 
         if (txt_arma != null)
             txt_arma.text = arma != null ? arma.NombreMostrado : "Sin arma";
@@ -59,7 +62,7 @@ public class HUD : MonoBehaviour
             }
             else if (arma.EnCaja)
             {
-                txt_municion.text = "Presiona V para romper" + (cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg." : "");
+                txt_municion.text = "Presiona " + teclaDisparar + " para romper" + (cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg." : "");
             }
             else if (arma.Recargando)
             {
@@ -67,13 +70,13 @@ public class HUD : MonoBehaviour
             }
             else if (arma is ArmaMachete)
             {
-                txt_municion.text = "V: Tajar  |  F: Lanzar" + (cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg." : "");
+                txt_municion.text = $"{teclaDisparar}: Tajar  |  {teclaSecundaria}: Lanzar" + (cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg." : "");
             }
             else if (arma is ArmaEscudo escudo)
             {
                 string estadoEscudo = escudo.EstaEmpunado
                     ? "Empuñado (Cubre todo + Empuje)"
-                    : "Pasivo (Mantén V para cubrir cabeza)";
+                    : $"Pasivo (Mantén {teclaDisparar} para cubrir cabeza)";
                 txt_municion.text = estadoEscudo + (cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg." : "");
             }
             else if (arma.Modo == ModoDisparo.RayoContinuo)
@@ -88,7 +91,7 @@ public class HUD : MonoBehaviour
                 }
                 else if (arma.DuracionBateriaActual <= 0.01f && cargadoresExtra > 0)
                 {
-                    txt_municion.text = "Energía: 0.0s  [Presiona R para recargar]";
+                    txt_municion.text = $"Energía: 0.0s  [Presiona {teclaRecargar} para recargar]";
                 }
                 else
                 {
@@ -99,7 +102,7 @@ public class HUD : MonoBehaviour
             {
                 if (arma.MunicionActual <= 0 && cargadoresExtra > 0)
                 {
-                    txt_municion.text = $"0 / {arma.MunicionMaxima}  [Presiona R para recargar]";
+                    txt_municion.text = $"0 / {arma.MunicionMaxima}  [Presiona {teclaRecargar} para recargar]";
                 }
                 else if (arma.MunicionActual <= 0)
                 {

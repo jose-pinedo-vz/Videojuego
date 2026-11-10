@@ -674,7 +674,7 @@ public class Arma : MonoBehaviour
 
     protected virtual void Update()
     {
-        if (jugadorCerca && Keyboard.current != null && Keyboard.current.cKey.wasPressedThisFrame && jugadorQueLaEquipo == null)
+        if (jugadorCerca && Keyboard.current != null && AjustesJuego.RecienPresionada(Accion.Recoger) && jugadorQueLaEquipo == null)
         {
             if (Time.frameCount != ultimoFrameAccionC)
             {
@@ -1353,11 +1353,11 @@ public class Arma : MonoBehaviour
     private float CalcularAtenuacionDistancia()
     {
         Camera cam = Camera.main;
-        if (cam == null) return 1f;
+        if (cam == null) return AjustesJuego.Efectos;
         float d = Vector2.Distance(
             new Vector2(cam.transform.position.x, cam.transform.position.y),
             new Vector2(transform.position.x, transform.position.y));
-        return Mathf.Clamp01(1f - d / GestorSonido.DistanciaMaxima);
+        return Mathf.Clamp01(1f - d / GestorSonido.DistanciaMaxima) * AjustesJuego.Efectos; // tambien aplica el ajuste de efectos
     }
 
     private void IniciarAudioCarga()
