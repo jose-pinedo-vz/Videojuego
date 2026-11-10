@@ -1,0 +1,7 @@
+ESCENARIO PATIO - nubes, arboles (copa + tronco), arbusto, cajas de madera, barda, piso, parrillas y muebles de madera y paredes laterales
+Instalacion:
+  1. Copiar la carpeta Assets/Patio dentro de Assets del proyecto.
+  2. Abrir la escena donde esta el patio y usar: Herramientas > Patio > Quitar materiales viejos de nubes y arboles (escena abierta)  [solo si siguen saliendo con la textura anterior; guarda la escena]
+  3. Herramientas > Patio > Texturizar nubes, arboles, arbusto, cajas, barda, piso, parrillas y muebles de madera y paredes laterales
+Todo lo demas del patio (piso, barda, banca, mesa...) no se toca todavia.
+Para quitarlo: borrar Assets/Patio y reimportar Patio.fbx.

@@ -1,0 +1,15 @@
+ESCENARIO SALA - texturas y scripts (todo en esta carpeta)
+
+Contenido
+  Texturas/   28 imagenes PNG (sillones, lamparas, estantes, muebles, tele, marcos/cuadros, libros, cajas, piso, paredes)
+  Editor/     SalaTexturizador.cs (principal) + un script por grupo de objetos
+  Materiales/ se crea sola al ejecutar el menu
+
+Instalacion
+  1. Copiar la carpeta Assets/Sala dentro de Assets del proyecto.
+  2. Si habia versiones sueltas anteriores (Texturizar*.cs, Assets/Texturas/Sala, Assets/Materiales/Sala):
+     menu Herramientas > Sala > Borrar versiones sueltas anteriores (o borrarlas a mano; si no, hay errores de compilacion o texturas duplicadas).
+  3. Menu Herramientas > Sala > Texturizar toda la sala.
+
+Que NO se toca: pared de fondo ("Pared"), "Techo", "mueble" del fondo izquierdo y Juego.unity.
+Para quitar todo: borrar Assets/Sala y reimportar sala.fbx.
