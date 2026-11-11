@@ -23,6 +23,7 @@ public class Arma : MonoBehaviour
     [SerializeField] protected float retrocesoDisparoHorizontal = 0f;
     [SerializeField] protected float retrocesoDisparoVertical = 0f;
     [SerializeField] protected float tiempoDespawnEnSuelo = 15f;
+    [SerializeField] protected bool destruyeYAtraviesaSuperficies = false;
     protected bool jugadorCerca = false; //Esto dejas aber si el jugador esta tocando al arma
     protected Transform mano; //El objeto al que se pegara cuando el jugador lo agarre (debe ser invisible)
     protected float tiempoUltimoDisparo=0f;
@@ -157,6 +158,8 @@ public class Arma : MonoBehaviour
         municionActual = municionMaxima;
         duracionBateriaActual = duracionBateriaMaxima;
         rotacionInicial = transform.rotation;
+        if (gameObject.name.ToLowerInvariant().Contains("antitanq"))
+            destruyeYAtraviesaSuperficies = true;
 
         AsegurarMallaProceduralSiCorresponde();
         InicializarRenderizadoresArma();
@@ -215,7 +218,7 @@ public class Arma : MonoBehaviour
 
     public void ConfigurarDatosArma(float cadencia, float alcance, int municionMax, float recarga)
     {
-        ConfigurarDatosArma(cadencia, alcance, municionMax, recarga, modoDisparo, Dispersion, Relantizacion, perdigonesPorDisparo, retrocesoDisparoHorizontal, retrocesoDisparoVertical);
+        ConfigurarDatosArma(cadencia, alcance, municionMax, recarga, modoDisparo, Dispersion, Relantizacion, perdigonesPorDisparo, retrocesoDisparoHorizontal, retrocesoDisparoVertical, destruyeYAtraviesaSuperficies);
     }
 
     public void ConfigurarDatosArma(
@@ -228,7 +231,8 @@ public class Arma : MonoBehaviour
         float ralentizacion = 0f,
         int perdigones = 1,
         float retrocesoH = 0f,
-        float retrocesoV = 0f)
+        float retrocesoV = 0f,
+        bool destruyeSuperficies = false)
     {
         Cadencia = cadencia;
         Alcance = alcance;
@@ -240,6 +244,7 @@ public class Arma : MonoBehaviour
         perdigonesPorDisparo = Mathf.Max(1, perdigones);
         retrocesoDisparoHorizontal = retrocesoH;
         retrocesoDisparoVertical = retrocesoV;
+        destruyeYAtraviesaSuperficies = destruyeSuperficies || gameObject.name.ToLowerInvariant().Contains("antitanq");
 
         if (modoDisparo == ModoDisparo.RayoContinuo)
         {
@@ -634,14 +639,37 @@ public class Arma : MonoBehaviour
         }
     }
 
+    private bool EstaJugadorRealmenteCerca(Personaje jugador)
+    {
+        if (jugador == null || jugador.EstaMuriendo || jugador.EnRagdoll || !jugador.gameObject.activeInHierarchy)
+            return false;
+
+        Vector3 centroArma = ObtenerCentroVisual();
+        Vector3 centroJugador = jugador.transform.position + Vector3.up * 0.85f;
+        float distXY = Vector2.Distance(
+            new Vector2(centroArma.x, centroArma.y),
+            new Vector2(centroJugador.x, centroJugador.y));
+
+        if (distXY <= 1.85f && Mathf.Abs(centroArma.z - centroJugador.z) <= 2.2f)
+            return true;
+
+        Collider colArma = GetComponent<Collider>();
+        Collider colJugador = jugador.GetComponent<Collider>();
+        if (colArma != null && colJugador != null && colArma.enabled && colJugador.enabled)
+            return colArma.bounds.Intersects(colJugador.bounds);
+
+        return false;
+    }
+
     //TERMINADO (El arma detecta al jugador cerca)
     protected virtual void OnTriggerEnter(Collider other)//Funcion para recoger el Arma si el jugador esta cercas (NO LE CAMBIEN EL NOMBRE PORFAS)
     {
+        if (jugadorQueLaEquipo != null) return;
         if (other.CompareTag("Player"))
         {
             // solo cuenta el jugador de esta PC (o en escena de prueba sin red)
             Personaje p = other.GetComponentInParent<Personaje>();
-            if (p == null || (p.IsSpawned && !p.IsOwner)) return;
+            if (p == null || p.EstaMuriendo || p.EnRagdoll || (p.IsSpawned && !p.IsOwner)) return;
 
             jugadorCerca = true;
             mano=p.transform.Find("Mano");
@@ -654,7 +682,7 @@ public class Arma : MonoBehaviour
         if (!jugadorCerca && jugadorQueLaEquipo == null && other.CompareTag("Player"))
         {
             Personaje p = other.GetComponentInParent<Personaje>();
-            if (p == null || (p.IsSpawned && !p.IsOwner)) return;
+            if (p == null || p.EstaMuriendo || p.EnRagdoll || (p.IsSpawned && !p.IsOwner)) return;
 
             jugadorCerca = true;
             mano = p.transform.Find("Mano");
@@ -669,17 +697,29 @@ public class Arma : MonoBehaviour
             if (p == null || (p.IsSpawned && !p.IsOwner)) return;
 
             jugadorCerca = false;
+            if (mano == p.transform.Find("Mano")) mano = null;
         }
     }
 
     protected virtual void Update()
     {
+        // Limpiar estado obsoleto tras muerte, ragdoll o teletransporte de spawn/ronda
+        if (jugadorCerca)
+        {
+            Personaje candidato = mano != null ? mano.GetComponentInParent<Personaje>() : null;
+            if (jugadorQueLaEquipo != null || !EstaJugadorRealmenteCerca(candidato))
+            {
+                jugadorCerca = false;
+                mano = null;
+            }
+        }
+
         if (jugadorCerca && Keyboard.current != null && AjustesJuego.RecienPresionada(Accion.Recoger) && jugadorQueLaEquipo == null)
         {
             if (Time.frameCount != ultimoFrameAccionC)
             {
                 Personaje jugador = mano != null ? mano.GetComponentInParent<Personaje>() : null;
-                if (jugador != null && jugador.armaEquipada == null)
+                if (jugador != null && jugador.armaEquipada == null && EstaJugadorRealmenteCerca(jugador))
                 {
                     RecogerArma();
                 }
@@ -895,7 +935,12 @@ public class Arma : MonoBehaviour
     {
         if (mano == null) return;
         Personaje jugador = mano.GetComponentInParent<Personaje>(); //Busca el script Personaje subiendo desde la mano
-        if (jugador == null || jugador.armaEquipada != null) return;
+        if (jugador == null || jugador.armaEquipada != null || !EstaJugadorRealmenteCerca(jugador))
+        {
+            jugadorCerca = false;
+            mano = null;
+            return;
+        }
 
         ultimoFrameAccionC = Time.frameCount;
         cayendo = false;
@@ -930,7 +975,7 @@ public class Arma : MonoBehaviour
     }
 
     // para que los demas jugadores vean el trazo de un disparo que no es suyo
-    public void MostrarDisparo(Vector3 inicio, Vector3 fin)
+    public virtual void MostrarDisparo(Vector3 inicio, Vector3 fin)
     {
         ContadorDisparos++;
         UltimoInicioTrazo = inicio;
@@ -1082,6 +1127,7 @@ public class Arma : MonoBehaviour
 
         if (presionando)
         {
+            if (jugadorQueLaEquipo != null) jugadorQueLaEquipo.CancelarInmunidadPorAtaque();
             if (tiempoCargaActual < tiempoCargaRequerido)
             {
                 if (!cargandoRayo)
@@ -1154,6 +1200,7 @@ public class Arma : MonoBehaviour
                 if (hit.collider.transform.IsChildOf(pj)) continue;
                 if (hit.collider.GetComponentInParent<Personaje>() != null) continue; // otros jugadores no cuentan
                 if (hit.collider.GetComponentInParent<Arma>() != null) continue;      // armas tiradas en el piso tampoco
+                if (destruyeYAtraviesaSuperficies && hit.collider.GetComponentInParent<ObjetoDestruible>() != null) continue;
                 if (hit.normal.y > 0.6f) continue; // rampa o piso inclinado, no es un obstaculo de frente
                 return true;
             }
@@ -1543,6 +1590,7 @@ public class Arma : MonoBehaviour
         tiempoUltimoDisparo = Time.time;
         municionActual--;
         ContadorDisparos++;
+        if (jugadorQueLaEquipo != null) jugadorQueLaEquipo.CancelarInmunidadPorAtaque();
 
         Debug.Log("jugadorQueLaEquipo: " + (jugadorQueLaEquipo != null ? jugadorQueLaEquipo.name : "null"));
         Debug.Log($"Arma Rot al disparar: {transform.rotation.eulerAngles}");
@@ -1600,12 +1648,14 @@ public class Arma : MonoBehaviour
 
             // Ignoramos triggers, colliders que envuelven el origen (distancia ~0, como Cochera convexa) y al propio tirador
             RaycastHit[] impactos = Physics.RaycastAll(origen, direccionDisparo, Alcance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            RaycastHit? impactoValido = null;
-            float menorDistancia = float.MaxValue;
+            System.Array.Sort(impactos, (a, b) => a.distance.CompareTo(b.distance));
+
+            Vector3 puntoFinal = origen + direccionDisparo * Alcance;
+            HashSet<ObjetoDestruible> destruiblesEnRayo = null;
 
             foreach (RaycastHit hit in impactos)
             {
-                if (hit.distance <= 0.05f) continue;
+                if (hit.distance <= 0.05f || hit.collider == null) continue;
 
                 if (jugadorQueLaEquipo != null &&
                     (hit.collider.transform.IsChildOf(jugadorQueLaEquipo.transform) ||
@@ -1614,26 +1664,38 @@ public class Arma : MonoBehaviour
                     continue;
                 }
 
-                if (hit.distance < menorDistancia)
+                ObjetoDestruible destruible = hit.collider.GetComponentInParent<ObjetoDestruible>();
+                if (destruible != null && !destruible.Destruido)
                 {
-                    menorDistancia = hit.distance;
-                    impactoValido = hit;
+                    if (destruyeYAtraviesaSuperficies)
+                    {
+                        if (destruiblesEnRayo == null) destruiblesEnRayo = new HashSet<ObjetoDestruible>();
+                        if (destruiblesEnRayo.Add(destruible))
+                        {
+                            GestorEntornoDestruible.SolicitarDestruirObstaculo(destruible, hit.point, direccionDisparo, false);
+                        }
+                        // El Antitanques atraviesa la superficie destruible en el mismo disparo
+                        continue;
+                    }
+
+                    // Para el resto de armas, la cobertura destruible detiene el disparo
+                    puntoFinal = hit.point;
+                    break;
                 }
-            }
 
-            Vector3 puntoFinal = origen + direccionDisparo * Alcance;
-            if (impactoValido.HasValue)
-            {
-                RaycastHit impacto = impactoValido.Value;
-                puntoFinal = impacto.point;
-                Debug.Log("Le diste a: " + impacto.collider.name + " en la posicion: " + impacto.point);
-
-                Personaje personajeGolpeado = impacto.collider.GetComponentInParent<Personaje>();
-                if (personajeGolpeado != null && personajeGolpeado != jugadorQueLaEquipo && !golpeadosEnEsteDisparo.Contains(personajeGolpeado))
+                Debug.Log("Le diste a: " + hit.collider.name + " en la posicion: " + hit.point);
+                Personaje personajeGolpeado = hit.collider.GetComponentInParent<Personaje>();
+                if (personajeGolpeado != null)
                 {
-                    golpeadosEnEsteDisparo.Add(personajeGolpeado);
-                    personajeGolpeado.RecibirImpactoDeDisparo(jugadorQueLaEquipo, impacto.point, direccionDisparo);
+                    if (personajeGolpeado != jugadorQueLaEquipo && !golpeadosEnEsteDisparo.Contains(personajeGolpeado))
+                    {
+                        golpeadosEnEsteDisparo.Add(personajeGolpeado);
+                        personajeGolpeado.RecibirImpactoDeDisparo(jugadorQueLaEquipo, hit.point, direccionDisparo);
+                    }
                 }
+
+                puntoFinal = hit.point;
+                break;
             }
 
             Vector3 finTrazo = new Vector3(puntoFinal.x, puntoFinal.y, inicioTrazo.z);

@@ -216,6 +216,16 @@ public class EfectosDisparo : MonoBehaviour
         dir = dir.sqrMagnitude > 0.0001f ? dir.normalized : Vector3.right;
 
         Sonido(arma, boca, perfil);
+
+        // Armas cuerpo a cuerpo (Machete y Escudo): solo sonido, palabra comic y ligera sacudida sin fogonazo/humo/balas
+        if (arma is ArmaMachete || arma is ArmaEscudo)
+        {
+            Vector3 posTexto = arma.transform.position + Vector3.up * 0.45f;
+            PalabraComic(posTexto, perfil.texto, perfil.destello);
+            if (local && perfil.sacudida > 0.01f) Sacudir(perfil.sacudida * 0.6f);
+            return;
+        }
+
         NuevoDestello(boca, perfil.destello, perfil.tamano * 1.4f, 0.09f);
 
         // chispas hacia adelante

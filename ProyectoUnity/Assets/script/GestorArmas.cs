@@ -57,6 +57,7 @@ public class GestorArmas : NetworkBehaviour
         public int perdigones;
         public float retrocesoH;
         public float retrocesoV;
+        public bool destruyeSuperficies;
         public System.Type tipoScript;
     }
 
@@ -69,9 +70,9 @@ public class GestorArmas : NetworkBehaviour
         new ConfigModeloArma { nombre = "bereta",      rutaFbx = "Assets/Modelos/bereta/bereta.fbx",           escala = new Vector3(0.125f, 0.125f, 0.125f), rotacionEuler = new Vector3(0f, 180f, 0f),   cadencia = 5f,    alcance = 5.5f,  dispersion = 0.8f, municionMax = 12, tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(Arma) },
         new ConfigModeloArma { nombre = "raygun",      rutaFbx = "Assets/Modelos/raygun/raygun.fbx",           escala = new Vector3(0.046f, 0.046f, 0.046f), rotacionEuler = new Vector3(90f, 180f, 0f),  cadencia = 20f,   alcance = 80f,   dispersion = 0.0f, municionMax = 5,  tiempoRecarga = 2.0f, modo = ModoDisparo.RayoContinuo,   ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(Arma) },
 
-        // 6 Armas nuevas (Antitanques con empuje fisico exagerado)
+        // 6 Armas nuevas (Antitanques con empuje fisico exagerado y perforacion de coberturas)
         new ConfigModeloArma { nombre = "machete",     rutaFbx = "Assets/Modelos/machete/machete.fbx",         escala = Vector3.one,                         rotacionEuler = Vector3.zero,                cadencia = 3.6f,  alcance = 2.45f, dispersion = 0.0f, municionMax = 0,  tiempoRecarga = 0.0f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(ArmaMachete) },
-        new ConfigModeloArma { nombre = "antitanques", rutaFbx = "Assets/Modelos/Antitanques/antitanques.fbx", escala = new Vector3(0.19f, 0.19f, 0.19f),    rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 0.7f,  alcance = 20f,   dispersion = 0.0f, municionMax = 3,  tiempoRecarga = 3.0f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0.38f, perdigones = 1, retrocesoH = 13.0f, retrocesoV = 2.4f, tipoScript = typeof(Arma) },
+        new ConfigModeloArma { nombre = "antitanques", rutaFbx = "Assets/Modelos/Antitanques/antitanques.fbx", escala = new Vector3(0.19f, 0.19f, 0.19f),    rotacionEuler = new Vector3(0f, -90f, 90f),  cadencia = 0.7f,  alcance = 20f,   dispersion = 0.0f, municionMax = 3,  tiempoRecarga = 3.0f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0.38f, perdigones = 1, retrocesoH = 13.0f, retrocesoV = 2.4f, destruyeSuperficies = true, tipoScript = typeof(Arma) },
         new ConfigModeloArma { nombre = "barreno",     rutaFbx = "Assets/Modelos/barreno/barreno.fbx",         escala = new Vector3(0.08f, 0.08f, 0.08f),    rotacionEuler = Vector3.zero,                cadencia = 1.4f,  alcance = 9.0f,  dispersion = 0.0f, municionMax = 3,  tiempoRecarga = 1.6f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(ArmaBarreno) },
         new ConfigModeloArma { nombre = "escudo",      rutaFbx = "Assets/Modelos/escudo/escudo.fbx",           escala = new Vector3(0.15f, 0.15f, 0.15f),    rotacionEuler = Vector3.zero,                cadencia = 2.0f,  alcance = 2.25f, dispersion = 0.0f, municionMax = 0,  tiempoRecarga = 0.0f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(ArmaEscudo) },
         new ConfigModeloArma { nombre = "platanos",    rutaFbx = "Assets/Modelos/platanos/penca.fbx",          escala = Vector3.one,                         rotacionEuler = Vector3.zero,                cadencia = 2.2f,  alcance = 6.5f,  dispersion = 0.0f, municionMax = 5,  tiempoRecarga = 1.2f, modo = ModoDisparo.Semiautomatico, ralentizacion = 0f,    perdigones = 1, retrocesoH = 0.0f,  retrocesoV = 0.0f, tipoScript = typeof(ArmaPlatanos) },
@@ -252,7 +253,8 @@ public class GestorArmas : NetworkBehaviour
                         cfg.ralentizacion,
                         cfg.perdigones,
                         cfg.retrocesoH,
-                        cfg.retrocesoV
+                        cfg.retrocesoV,
+                        cfg.destruyeSuperficies
                     );
                     scriptArma.RecalibrarModeloVisual();
                 }
