@@ -68,13 +68,15 @@ public static partial class EstiloUI
         CrearTitulo(p, "Elige cómo jugar", new Vector2(0, 120), new Vector2(560, 70), 44);
         EstiloBoton(Boton(p, "btn_crearSala"), true, new Vector2(0, 10), new Vector2(420, 70));
         EstiloBoton(Boton(p, "btn_UnirmeSale"), false, new Vector2(0, -90), new Vector2(420, 70));
+        CrearBotonAtras(p, "btn_atrasSeleccion", menu.atrasDeSeleccion, new Vector2(0, -165), new Vector2(420, 60));
 
         // ---- Host: codigo de sala, jugadores y empezar ----
         p = canvas.Find("CrearHost");
-        EstiloPanel(p, new Vector2(720, 560));
+        EstiloPanel(p, new Vector2(720, 660));
         EstiloTexto(Texto(p, "codigo"), new Vector2(0, 190), new Vector2(620, 80), 52, true, Acento, TextAlignmentOptions.Center);
         EstiloTexto(Texto(p, "nombre"), new Vector2(0, 40), new Vector2(560, 210), 28, false, TextoClaro, TextAlignmentOptions.Top);
         EstiloBoton(Boton(p, "btn_playGame"), true, new Vector2(0, -210), new Vector2(420, 72));
+        CrearBotonAtras(p, "btn_atrasHost", menu.atrasDeHost, new Vector2(0, -290), new Vector2(420, 60));
 
         // ---- Cliente: escribir el codigo ----
         p = canvas.Find("CrearCliente");
@@ -82,6 +84,7 @@ public static partial class EstiloUI
         EstiloTexto(Texto(p, "Text (TMP)"), new Vector2(0, 170), new Vector2(560, 70), 30, true, TextoClaro, TextAlignmentOptions.Center);
         EstiloInput(Input(p, "ingresoCodigo"), new Vector2(0, 40), new Vector2(420, 64));
         EstiloBoton(Boton(p, "btn_unirmeSala"), true, new Vector2(0, -90), new Vector2(420, 70));
+        CrearBotonAtras(p, "btn_atrasCliente", menu.atrasDeCliente, new Vector2(0, -170), new Vector2(420, 60));
 
         // ---- Pantalla de carga: lista de jugadores conectados ----
         p = canvas.Find("pantalla de carga");
@@ -286,6 +289,32 @@ public static partial class EstiloUI
         rt.offsetMin = rt.offsetMax = Vector2.zero;
 
         EstiloBoton(boton, true, new Vector2(0, -270), new Vector2(420, 72));
+    }
+
+    // boton "Atras" secundario para las pantallas de seleccion, host y cliente
+    private static void CrearBotonAtras(Transform panel, string nombre, UnityEngine.Events.UnityAction accion, Vector2 pos, Vector2 tam)
+    {
+        if (panel == null || panel.Find(nombre) != null) return;
+
+        TextMeshProUGUI referencia = panel.GetComponentInChildren<TextMeshProUGUI>(true);
+
+        GameObject go = new GameObject(nombre, typeof(RectTransform), typeof(Image), typeof(Button));
+        go.transform.SetParent(panel, false);
+        Button boton = go.GetComponent<Button>();
+        boton.onClick.AddListener(accion);
+
+        GameObject goTxt = new GameObject("Text (TMP)", typeof(RectTransform));
+        goTxt.transform.SetParent(go.transform, false);
+        TextMeshProUGUI txt = goTxt.AddComponent<TextMeshProUGUI>();
+        if (referencia != null) txt.font = referencia.font;
+        txt.text = "Atrás";
+        txt.raycastTarget = false;
+        RectTransform rt = txt.rectTransform;
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = rt.offsetMax = Vector2.zero;
+
+        EstiloBoton(boton, false, pos, tam);
     }
 
     // el Canvas escala con la pantalla para que se vea igual en cualquier resolucion

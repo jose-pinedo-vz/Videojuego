@@ -1353,11 +1353,11 @@ public class Arma : MonoBehaviour
     private float CalcularAtenuacionDistancia()
     {
         Camera cam = Camera.main;
-        if (cam == null) return AjustesJuego.Efectos;
+        if (cam == null) return AjustesJuego.Armas;
         float d = Vector2.Distance(
             new Vector2(cam.transform.position.x, cam.transform.position.y),
             new Vector2(transform.position.x, transform.position.y));
-        return Mathf.Clamp01(1f - d / GestorSonido.DistanciaMaxima) * AjustesJuego.Efectos; // tambien aplica el ajuste de efectos
+        return Mathf.Clamp01(1f - d / GestorSonido.DistanciaMaxima) * AjustesJuego.Armas; // sonido del rayo: usa el volumen de armas
     }
 
     private void IniciarAudioCarga()
