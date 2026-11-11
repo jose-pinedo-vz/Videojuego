@@ -32,10 +32,14 @@ public static class AjustesJuego
     public const float DEFECTO_GENERAL = 1f;
     public const float DEFECTO_MUSICA = 0.6f;
     public const float DEFECTO_EFECTOS = 1f;
+    public const float DEFECTO_MUSICA_LOBBY = 0.6f;
+    public const float DEFECTO_ARMAS = 1f;
 
     public static float General { get; private set; } = DEFECTO_GENERAL;  // 0..1, afecta a todo el audio
-    public static float Musica { get; private set; } = DEFECTO_MUSICA;    // 0..1
-    public static float Efectos { get; private set; } = DEFECTO_EFECTOS;  // 0..1, disparos, pasos, ambiente
+    public static float MusicaLobby { get; private set; } = DEFECTO_MUSICA_LOBBY; // 0..1, la cancion del lobby / menu
+    public static float Musica { get; private set; } = DEFECTO_MUSICA;    // 0..1, musica de partida (se guarda como "volumenMusica")
+    public static float Armas { get; private set; } = DEFECTO_ARMAS;      // 0..1, disparos, recargas y demas sonidos de armas
+    public static float Efectos { get; private set; } = DEFECTO_EFECTOS;  // 0..1, pasos, saltos, interfaz, ambiente...
 
     private static readonly int TOTAL = Enum.GetValues(typeof(Accion)).Length;
     private static readonly Key[] porDefecto =
@@ -72,6 +76,8 @@ public static class AjustesJuego
         public float volumenGeneral = DEFECTO_GENERAL;
         public float volumenMusica = DEFECTO_MUSICA;
         public float volumenEfectos = DEFECTO_EFECTOS;
+        public float volumenMusicaLobby = DEFECTO_MUSICA_LOBBY;
+        public float volumenArmas = DEFECTO_ARMAS;
         public List<EntradaTecla> teclas = new List<EntradaTecla>();
     }
 
@@ -110,6 +116,8 @@ public static class AjustesJuego
         General = Limpiar(d.volumenGeneral, DEFECTO_GENERAL);
         Musica = Limpiar(d.volumenMusica, DEFECTO_MUSICA);
         Efectos = Limpiar(d.volumenEfectos, DEFECTO_EFECTOS);
+        MusicaLobby = Limpiar(d.volumenMusicaLobby, DEFECTO_MUSICA_LOBBY); // un ajustes.json viejo no los trae: quedan en su valor por defecto
+        Armas = Limpiar(d.volumenArmas, DEFECTO_ARMAS);
 
         if (d.teclas == null) return;
         Key[] leidas = (Key[])porDefecto.Clone();
@@ -151,7 +159,9 @@ public static class AjustesJuego
         {
             volumenGeneral = General,
             volumenMusica = Musica,
-            volumenEfectos = Efectos
+            volumenEfectos = Efectos,
+            volumenMusicaLobby = MusicaLobby,
+            volumenArmas = Armas
         };
         for (int i = 0; i < TOTAL; i++)
         {
@@ -193,6 +203,22 @@ public static class AjustesJuego
         sucio = true;
     }
 
+    public static void FijarMusicaLobby(float v)
+    {
+        v = Limpiar(v, MusicaLobby);
+        if (Mathf.Approximately(v, MusicaLobby)) return;
+        MusicaLobby = v;
+        sucio = true;
+    }
+
+    public static void FijarArmas(float v)
+    {
+        v = Limpiar(v, Armas);
+        if (Mathf.Approximately(v, Armas)) return;
+        Armas = v;
+        sucio = true;
+    }
+
     public static void FijarEfectos(float v)
     {
         v = Limpiar(v, Efectos);
@@ -204,7 +230,9 @@ public static class AjustesJuego
     public static void RestablecerVolumen()
     {
         FijarGeneral(DEFECTO_GENERAL);
+        FijarMusicaLobby(DEFECTO_MUSICA_LOBBY);
         FijarMusica(DEFECTO_MUSICA);
+        FijarArmas(DEFECTO_ARMAS);
         FijarEfectos(DEFECTO_EFECTOS);
     }
 

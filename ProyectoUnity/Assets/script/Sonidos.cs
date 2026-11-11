@@ -38,7 +38,7 @@ public class GestorSonido : MonoBehaviour
 
     private const int Fuentes = 18;
     private const float VolumenAmbiente = 0.25f;
-    private const float VolumenMusicaMenu = 0.28f;
+    private const float VolumenMusicaMenu = 0.45f; // cancion de piano del lobby (Black Ops 2): era 0.28 y sonaba muy bajito; las de partida no cambian
     private const string PistaMenuLobby = "BLACK OPS 2 ZOMBIES OFFICIAL Theme Song - spllitz";
     private const string PistaPartidaPrincipal = "Throttle_Locked_Open";
     private static readonly string[] PistasPartida = new string[]
@@ -187,9 +187,16 @@ public class GestorSonido : MonoBehaviour
     }
 
     // 100% de musica = GANANCIA_MAXIMA_MUSICA veces el volumen base de las pistas
-    private static float GananciaMusica()
+    private static float GananciaMusica(bool lobby = false)
     {
-        return AjustesJuego.Musica * AjustesJuego.GANANCIA_MAXIMA_MUSICA;
+        return (lobby ? AjustesJuego.MusicaLobby : AjustesJuego.Musica) * AjustesJuego.GANANCIA_MAXIMA_MUSICA;
+    }
+
+    // disparos, recargas y demas sonidos de armas usan su propio volumen; el resto va con "efectos"
+    private static float VolumenCategoria(string nombre)
+    {
+        bool arma = nombre.StartsWith("disparo_") || nombre == "recarga" || nombre == "sin_municion" || nombre == "recoger";
+        return arma ? AjustesJuego.Armas : AjustesJuego.Efectos;
     }
 
     // guarda los ajustes pendientes al cerrar el juego (por si se cerro la ventana sin volver al menu)
@@ -221,7 +228,7 @@ public class GestorSonido : MonoBehaviour
         siguiente = (siguiente + 1) % pool.Length;
         a.pitch = tono * Random.Range(0.96f, 1.04f);
         a.panStereo = 0f;
-        a.volume = Mathf.Clamp01(volumen * AjustesJuego.Efectos); // ajuste de efectos del jugador
+        a.volume = Mathf.Clamp01(volumen * VolumenCategoria(nombre)); // ajuste de armas o efectos del jugador
         a.clip = clip;
         a.Play();
     }
@@ -343,8 +350,8 @@ public class GestorSonido : MonoBehaviour
         }
 
         // el volumen de musica que eligio el jugador multiplica el volumen base de las pistas (tope 1 de AudioSource)
-        float ganancia = GananciaMusica();
         bool esCancionPartida = EsPistaPartida(pistaActual);
+        float ganancia = GananciaMusica(!esCancionPartida); // lobby y partida tienen cada una su volumen
         float objetivo = Mathf.Clamp01((esCancionPartida ? VolumenMusicaPartidaObjetivo : VolumenMusicaMenu) * ganancia);
         float pasoSubida = esCancionPartida
             ? ((VolumenMusicaPartidaObjetivo - VolumenMusicaPartidaInicial) * ganancia / TiempoSubidaMusicaPartida) * Time.unscaledDeltaTime

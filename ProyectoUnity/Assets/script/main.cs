@@ -267,6 +267,33 @@ public class inicio : MonoBehaviour
     }
 
 
+    // "Atras" desde la pantalla de crear/unirse: vuelve al menu principal
+    public void atrasDeSeleccion()
+    {
+        PanelSeleccion.SetActive(false);
+        PanelInicio.SetActive(true);
+    }
+
+    // "Atras" desde la sala del host: cierra la sala (si ya existe) y regresa al menu
+    public void atrasDeHost()
+    {
+        NetworkManager nm = NetworkManager.Singleton;
+        if (nm != null && nm.IsListening)
+        {
+            volverAlMenu(); // apaga la red y recarga la escena
+            return;
+        }
+        PanelHost.SetActive(false);
+        PanelSeleccion.SetActive(true);
+    }
+
+    // "Atras" desde la pantalla de codigo del cliente
+    public void atrasDeCliente()
+    {
+        PanelCliente.SetActive(false);
+        PanelSeleccion.SetActive(true);
+    }
+
     // salir
     public void salir()
     {

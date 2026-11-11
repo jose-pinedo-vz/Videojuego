@@ -36,3 +36,8 @@ crashlytics-build.properties
 
 # Claude Code (config local de cada persona)
 .claude/settings.local.json
+
+# Basura generada por Unity
+ProyectoUnity/mono_crash.*
+ProyectoUnity/Assets/_Recovery/
+ProyectoUnity/Assets/_Recovery.meta

@@ -245,7 +245,7 @@ public static class ModelosProceduralesArmas
         if (prefabBarrenoCache != null)
         {
             go = Object.Instantiate(prefabBarrenoCache, posicion, Quaternion.identity);
-            go.transform.localScale = new Vector3(0.025f, 0.025f, 0.025f);
+            go.transform.localScale = new Vector3(0.08f, 0.08f, 0.08f); // igual que el barreno de la mano (GestorArmas)
         }
         else
         {

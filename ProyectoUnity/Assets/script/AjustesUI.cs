@@ -45,32 +45,41 @@ public static partial class EstiloUI
         Transform existente = canvas.Find("AjustesVolumen");
         if (existente != null) { menu.PanelAjustesVolumen = existente.gameObject; return; }
 
-        GameObject panel = NuevoPanelAjustes(canvas, "AjustesVolumen", new Vector2(780, 640));
+        GameObject panel = NuevoPanelAjustes(canvas, "AjustesVolumen", new Vector2(820, 860));
         Transform t = panel.transform;
 
-        EstiloTitulo(CrearTextoSimple(t, "Titulo", fuente, "Ajustes de volumen"), new Vector2(0, 245), new Vector2(700, 70), 44);
+        EstiloTitulo(CrearTextoSimple(t, "Titulo", fuente, "Ajustes de volumen"), new Vector2(0, 360), new Vector2(740, 70), 44);
 
-        TextMeshProUGUI vGeneral = null, vMusica = null, vEfectos = null;
-        Slider sGeneral = FilaVolumen(t, fuente, "Volumen general", 110, AjustesJuego.General, AjustesJuego.FijarGeneral, out vGeneral);
-        Slider sMusica = FilaVolumen(t, fuente, "Música", 0, AjustesJuego.Musica, AjustesJuego.FijarMusica, out vMusica);
-        Slider sEfectos = FilaVolumen(t, fuente, "Efectos", -110, AjustesJuego.Efectos, AjustesJuego.FijarEfectos, out vEfectos);
+        // cada fila: nombre arriba a la izquierda, porcentaje arriba a la derecha y la barra debajo (nada se empalma)
+        string[] nombres = { "Volumen general", "Música del lobby", "Música de juego", "Sonido de armas", "Efectos" };
+        float[] inicial = { AjustesJuego.General, AjustesJuego.MusicaLobby, AjustesJuego.Musica, AjustesJuego.Armas, AjustesJuego.Efectos };
+        Action<float>[] fijar = { AjustesJuego.FijarGeneral, AjustesJuego.FijarMusicaLobby, AjustesJuego.FijarMusica, AjustesJuego.FijarArmas, AjustesJuego.FijarEfectos };
+        Func<float>[] actual = { () => AjustesJuego.General, () => AjustesJuego.MusicaLobby, () => AjustesJuego.Musica, () => AjustesJuego.Armas, () => AjustesJuego.Efectos };
 
-        TextMeshProUGUI nota = CrearTextoSimple(t, "Nota", fuente, "La música sube hasta 3.5 veces su volumen original.");
-        EstiloTexto(nota, new Vector2(0, -185), new Vector2(700, 36), 22, false, TextoTenue, TextAlignmentOptions.Center);
+        int n = nombres.Length;
+        Slider[] sliders = new Slider[n];
+        TextMeshProUGUI[] valores = new TextMeshProUGUI[n];
+        for (int i = 0; i < n; i++)
+            sliders[i] = FilaVolumen(t, fuente, nombres[i], 250 - i * 105, inicial[i], fijar[i], out valores[i]);
+
+        TextMeshProUGUI nota = CrearTextoSimple(t, "Nota", fuente, "La música puede subir hasta 3.5 veces su volumen original.");
+        EstiloTexto(nota, new Vector2(0, -290), new Vector2(740, 36), 20, false, TextoTenue, TextAlignmentOptions.Center);
 
         Button restablecer = CrearBotonSimple(t, "btn_restablecerVolumen", fuente, "Restablecer");
-        EstiloBoton(restablecer, false, new Vector2(-135, -255), new Vector2(240, 60));
+        EstiloBoton(restablecer, false, new Vector2(-135, -360), new Vector2(240, 60));
         restablecer.onClick.AddListener(() =>
         {
             AjustesJuego.RestablecerVolumen();
-            sGeneral.SetValueWithoutNotify(AjustesJuego.General); vGeneral.text = Porcentaje(AjustesJuego.General);
-            sMusica.SetValueWithoutNotify(AjustesJuego.Musica); vMusica.text = Porcentaje(AjustesJuego.Musica);
-            sEfectos.SetValueWithoutNotify(AjustesJuego.Efectos); vEfectos.text = Porcentaje(AjustesJuego.Efectos);
+            for (int i = 0; i < n; i++)
+            {
+                sliders[i].SetValueWithoutNotify(actual[i]());
+                valores[i].text = Porcentaje(actual[i]());
+            }
             AjustesJuego.GuardarSiHuboCambios();
         });
 
         Button atras = CrearBotonSimple(t, "btn_atrasVolumen", fuente, "Atrás");
-        EstiloBoton(atras, true, new Vector2(135, -255), new Vector2(240, 60));
+        EstiloBoton(atras, true, new Vector2(135, -360), new Vector2(240, 60));
         atras.onClick.AddListener(menu.cerrarAjustes);
 
         menu.PanelAjustesVolumen = panel;
@@ -87,16 +96,19 @@ public static partial class EstiloUI
         Action<float> fijar, out TextMeshProUGUI valor)
     {
         TextMeshProUGUI txtEtiqueta = CrearTextoSimple(panel, "Etiqueta_" + etiqueta, fuente, etiqueta);
-        EstiloTexto(txtEtiqueta, new Vector2(-340, y), new Vector2(230, 50), 28, false, TextoClaro, TextAlignmentOptions.MidlineLeft);
+        EstiloTexto(txtEtiqueta, new Vector2(-350, y + 26), new Vector2(480, 40), 28, false, TextoClaro, TextAlignmentOptions.MidlineLeft);
         RectTransform re = txtEtiqueta.rectTransform;
         re.pivot = new Vector2(0f, 0.5f);
-        re.anchoredPosition = new Vector2(-340, y);
+        re.anchoredPosition = new Vector2(-350, y + 26);
 
         TextMeshProUGUI txtValor = CrearTextoSimple(panel, "Valor_" + etiqueta, fuente, Porcentaje(inicial));
-        EstiloTexto(txtValor, new Vector2(310, y), new Vector2(100, 50), 30, true, Acento, TextAlignmentOptions.Center);
+        EstiloTexto(txtValor, new Vector2(300, y + 26), new Vector2(110, 40), 30, true, Acento, TextAlignmentOptions.MidlineRight);
+        RectTransform rv = txtValor.rectTransform;
+        rv.pivot = new Vector2(1f, 0.5f);
+        rv.anchoredPosition = new Vector2(350, y + 26);
         valor = txtValor;
 
-        Slider slider = CrearSlider(panel, "Slider_" + etiqueta, new Vector2(40, y), new Vector2(380, 36), inicial);
+        Slider slider = CrearSlider(panel, "Slider_" + etiqueta, new Vector2(0, y - 22), new Vector2(700, 32), inicial);
         slider.onValueChanged.AddListener(v =>
         {
             fijar(v);
