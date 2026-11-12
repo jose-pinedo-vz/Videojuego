@@ -4,15 +4,16 @@ using UnityEngine;
 /// <summary>
 /// Penca de Platano:
 /// - Viene en pencas de 5 platanos (usa los modelos penca.fbx y cascara.fbx).
-/// - No tiene daño de area; al usar V lanza una cascara al suelo como trampa que impide moverse bien a los enemigos.
+/// - Al usar V el personaje se come un platano y su cascara cae al piso (copia del modelo cascara.fbx).
+/// - Quien pise una cascara resbala y cae como muñeco (ragdoll). No hay explosion ni daño.
 /// </summary>
 public class ArmaPlatanos : Arma
 {
     [Header("Configuracion de Penca de Platano")]
-    [SerializeField] private float distanciaDetras = 0.5f;     // que tan atras del personaje aparece
-    [SerializeField] private float alturaSuelta = 0.4f;        // a que altura sale (cae al piso)
-    [SerializeField] private float velocidadHaciaAtras = 1.0f; // empujoncito hacia atras al soltarla
-    [SerializeField] private float velocidadLanzamientoY = 1.2f;
+    [SerializeField] private float distanciaDetras = 0.25f;    // que tan atras del personaje aparece
+    [SerializeField] private float alturaSuelta = 0.45f;       // a que altura sale (cae al piso)
+    [SerializeField] private float velocidadHaciaAtras = 0.4f; // apenas se desliza hacia atras al caer
+    [SerializeField] private float velocidadLanzamientoY = 0f; // sin impulso hacia arriba: solo cae
     [SerializeField] private float duracionResbalonSegundos = 3.5f;
 
     protected override void Start()
@@ -84,7 +85,7 @@ public class ArmaPlatanos : Arma
 
         Personaje lanzador = jugadorQueLaEquipo;
         float dirX = lanzador.DireccionHorizontal;
-        // la cascara se suelta DETRAS del personaje (contra la direccion en que mira) y cae al piso
+        // la cascara cae al piso pegada al personaje (algo detras, contra la direccion en que mira)
         Vector3 origen = lanzador.transform.position + new Vector3(-dirX * distanciaDetras, alturaSuelta, 0f);
         Vector3 velocidad = new Vector3(-dirX * velocidadHaciaAtras, velocidadLanzamientoY, 0f);
 

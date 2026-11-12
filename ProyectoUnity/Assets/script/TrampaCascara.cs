@@ -3,18 +3,19 @@ using UnityEngine;
 /// <summary>
 /// Cascara de platano en el suelo:
 /// - No hace daño de area; sirve como trampa en el piso.
-/// - Cuando un enemigo pasa sobre ella, hace que no se pueda mover bien durante unos segundos (resbalon/ralentizacion severa).
+/// - Es una copia del modelo de la cascara que cae al piso cuando el personaje se come un platano.
+/// - Cuando alguien la pisa resbala y cae como muñeco (ragdoll) unos segundos. Sin explosion.
 /// </summary>
 public class TrampaCascara : MonoBehaviour
 {
     private Personaje lanzador;
     private Vector3 velocidad;
     private bool enPiso;
-    private float tiempoVida = 35f;
+    private float tiempoVida = 90f;    // se queda en el piso hasta que alguien la pise (o pasan 90 s)
+    private float tiempoEnEscena;
     private float tiempoArmado = 0.25f;
     private float duracionEfecto = 3.5f;
     private bool consumida;
-    private const float RADIO_EXPLOSION_VISUAL = 1.2f; // chica a proposito: la del barreno es de 4.4
     private float yInicial;
     private bool yaInicio;
 
@@ -31,6 +32,7 @@ public class TrampaCascara : MonoBehaviour
 
         float dt = Time.deltaTime;
         tiempoVida -= dt;
+        tiempoEnEscena += dt;
         if (tiempoVida <= 0f)
         {
             Destroy(gameObject);
@@ -88,13 +90,11 @@ public class TrampaCascara : MonoBehaviour
             if (p == null) continue;
 
             // No activar con el propio lanzador inmediatamente al soltarla
-            if (p == lanzador && tiempoVida > 33.8f) continue;
+            if (p == lanzador && tiempoEnEscena < 1.2f) continue;
 
             consumida = true;
             Sonidos.Reproducir("deslizar", transform.position, 0.95f, 1.35f);
-            // mini explosion: se ve y se oye como una bomba, pero no hace dano; lo que hace es tirar al personaje (ragdoll)
-            ArmaBarreno.CrearEfectoVisualExplosion(transform.position, RADIO_EXPLOSION_VISUAL);
-            Sonidos.Reproducir("explosion", transform.position, 0.6f, 1.3f);
+            // solo el resbalon: lo tira (ragdoll), no hace dano ni explota
             p.RecibirResbalonPlatano(duracionEfecto, transform.position);
             Destroy(gameObject);
             return;

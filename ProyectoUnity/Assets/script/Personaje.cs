@@ -532,6 +532,9 @@ public class Personaje : NetworkBehaviour
 
     private void AplicarEmpujeLocal(Vector3 impulso)
     {
+        // el golpe del escudo lo tira como muñeco (ragdoll); otros empujes (retroceso de armas) solo lo desplazan
+        if (impulso.sqrMagnitude > 0.01f && AplicarCaidaPorEscudo(impulso)) return;
+
         velocidadEmpuje = new Vector3(impulso.x, 0f, 0f);
         if (impulso.y > 0f)
         {
@@ -583,14 +586,15 @@ public class Personaje : NetworkBehaviour
     // No quita vida, no es mortal.
     private RagdollPlastilina ragdoll;
     public bool EnRagdoll => ragdoll != null && ragdoll.Activo;
-    private const float DURACION_RAGDOLL = 3f;
+    public float Gravedad => gravedad; // el ragdoll cae con la misma gravedad que el personaje
+    private const float DURACION_RAGDOLL = 2.5f; // maximo tirado; se levanta antes si ya quedo quieto
 
     public void RecibirResbalonPlatano(float duracion)
     {
         RecibirResbalonPlatano(duracion, transform.position);
     }
 
-    // origenCascara: donde estaba la cascara, de ahi sale la "explosion" que lo despide
+    // origenCascara: donde estaba la cascara que pisó
     public void RecibirResbalonPlatano(float duracion, Vector3 origenCascara)
     {
         if (!IsSpawned || IsOwner) IniciarCaidaPlatano(origenCascara);
@@ -607,13 +611,24 @@ public class Personaje : NetworkBehaviour
     {
         if (muriendo || EnRagdoll) return; // ya esta en el suelo o muriendo
 
-        // sale despedido lejos de la cascara y hacia arriba; si estaba justo encima, hacia atras de donde mira
-        float lado = transform.position.x - origenCascara.x;
-        float dirX = Mathf.Abs(lado) > 0.05f ? Mathf.Sign(lado) : -DireccionHorizontal;
-        Vector3 direccion = new Vector3(dirX * 0.6f, 1f, 0f);
+        // resbala: sale despedido hacia donde caminaba (adelante y arriba) y cae de espaldas
+        float dirX = DireccionHorizontal < 0f ? -1f : 1f;
+        Vector3 direccion = new Vector3(dirX, 1f, dirX); // x: hacia donde sale despedido, z: hacia donde mira
 
         IniciarRagdoll(direccion, true);
         if (IsSpawned) IniciarRagdollVisualRpc(direccion);
+    }
+
+    // golpe de escudo: sale despedido en la direccion del golpe y cae como en el resbalon
+    private bool AplicarCaidaPorEscudo(Vector3 impulso)
+    {
+        if (muriendo || EnRagdoll) return true; // ya esta en el suelo: no se acumula otro empuje
+        float sentido = impulso.x < 0f ? -1f : 1f;
+        float mira = DireccionHorizontal < 0f ? -1f : 1f;
+        Vector3 direccion = new Vector3(sentido, 1f, mira);
+        IniciarRagdoll(direccion, true);
+        if (IsSpawned) IniciarRagdollVisualRpc(direccion);
+        return true;
     }
 
     // los demas jugadores ven el ragdoll en su pantalla

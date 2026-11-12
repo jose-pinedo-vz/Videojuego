@@ -4,7 +4,6 @@ using UnityEngine;
 // y provee carga segura de modelos para proyectiles/trampas (cáscara, barreno, caja de munición).
 public static class ModelosProceduralesArmas
 {
-    private static GameObject prefabCascaraCache;
     private static GameObject prefabBarrenoCache;
 
     public static bool TieneMallaValida(GameObject go)
@@ -197,38 +196,35 @@ public static class ModelosProceduralesArmas
         }
     }
 
+    // Solo la cascara de platano (no el platano entero): una base chica con 4 petalos abiertos sobre el piso,
+    // amarillos con la punta cafe. Mide ~0.3 de ancho, el personaje mide ~0.55.
     public static GameObject InstanciarModeloCascara(Vector3 posicion)
     {
-#if UNITY_EDITOR
-        if (prefabCascaraCache == null)
-        {
-            prefabCascaraCache = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Modelos/platanos/cascara.fbx");
-        }
-#endif
-        GameObject go;
-        if (prefabCascaraCache != null)
-        {
-            go = Object.Instantiate(prefabCascaraCache, posicion, Quaternion.identity);
-            go.transform.localScale = new Vector3(0.00012f, 0.00012f, 0.00012f);
-        }
-        else
-        {
-            go = new GameObject("CascaraPlatano");
-            go.transform.position = posicion;
-            Material matAmarillo = CrearMaterialColor(new Color(1.0f, 0.88f, 0.12f), 0.05f, 0.5f);
-            for (int i = 0; i < 3; i++)
-            {
-                float ang = i * 120f;
-                CrearPiezaPrimitiva(PrimitiveType.Capsule, "Petalo_" + i, go.transform,
-                    Quaternion.Euler(0f, ang, 0f) * new Vector3(0.10f, 0.04f, 0f),
-                    new Vector3(0f, ang, 65f), new Vector3(0.06f, 0.14f, 0.04f), matAmarillo);
-            }
-        }
+        GameObject go = new GameObject("CascaraPlatano");
+        go.transform.position = posicion;
 
-        Material matAmarilloVivo = CrearMaterialColor(new Color(1.0f, 0.88f, 0.12f), 0.05f, 0.55f);
-        foreach (MeshRenderer mr in go.GetComponentsInChildren<MeshRenderer>(true))
+        Material matAmarillo = CrearMaterialColor(new Color(1.0f, 0.86f, 0.10f), 0.0f, 0.55f);
+        Material matInterior = CrearMaterialColor(new Color(0.96f, 0.90f, 0.62f), 0.0f, 0.35f);
+        Material matPunta = CrearMaterialColor(new Color(0.36f, 0.22f, 0.07f), 0.0f, 0.2f);
+
+        // base (donde estaba el tallo)
+        CrearPiezaPrimitiva(PrimitiveType.Sphere, "Base", go.transform,
+            new Vector3(0f, 0.025f, 0f), Vector3.zero, new Vector3(0.09f, 0.045f, 0.09f), matInterior);
+        CrearPiezaPrimitiva(PrimitiveType.Cylinder, "Tallo", go.transform,
+            new Vector3(0f, 0.06f, 0f), new Vector3(0f, 0f, 12f), new Vector3(0.025f, 0.04f, 0.025f), matPunta);
+
+        // petalos: salen hacia afuera, aplastados, con la punta levantada
+        for (int i = 0; i < 4; i++)
         {
-            if (mr != null) mr.sharedMaterial = matAmarilloVivo;
+            float ang = i * 90f + 20f;
+            GameObject eje = new GameObject("Petalo_" + i);
+            eje.transform.SetParent(go.transform, false);
+            eje.transform.localRotation = Quaternion.Euler(0f, ang, 0f);
+
+            CrearPiezaPrimitiva(PrimitiveType.Capsule, "Cuerpo", eje.transform,
+                new Vector3(0f, 0.03f, 0.11f), new Vector3(80f, 0f, 0f), new Vector3(0.085f, 0.11f, 0.02f), matAmarillo);
+            CrearPiezaPrimitiva(PrimitiveType.Sphere, "Punta", eje.transform,
+                new Vector3(0f, 0.045f, 0.23f), Vector3.zero, new Vector3(0.05f, 0.025f, 0.05f), matPunta);
         }
         return go;
     }
