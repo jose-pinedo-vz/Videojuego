@@ -415,8 +415,9 @@ public class Arma : MonoBehaviour
         if (n.Contains("escopeta"))
             return Quaternion.Euler(90f, 0f, 0f);
 
+        // antitanques.fbx se exporto igual que ak47.fbx (raiz vacia + malla hija con su giro de Blender): misma orientacion que el AK
         if (n.Contains("antitanq"))
-            return Quaternion.Euler(90f, 180f, 0f);
+            return Quaternion.identity;
 
         MeshFilter mfRaiz = GetComponent<MeshFilter>();
         if (mfRaiz != null && mfRaiz.sharedMesh != null)

@@ -3,7 +3,37 @@ guid: 5ed0c9e6fe381e443893919246322718
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: CQBSS
+    second: {fileID: 2100000, guid: 376d68c245a988e72bab50e4d43a334f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: CQB_GlassInner
+    second: {fileID: 2100000, guid: 18f5afe6c116397dd90a3f980159c651, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MI_AWM
+    second: {fileID: 2100000, guid: 56b40858902e32d62b064921a7fd7e5d, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MI_AWM.1
+    second: {fileID: 2100000, guid: cb6e5976995a203cda6b63991744a529, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat.1
+    second: {fileID: 2100000, guid: 3bfceb9977e03f346a357d63ddc5065a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: material
+    second: {fileID: 2100000, guid: 807fd8403b0ba54fab658abdd473d4b0, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
