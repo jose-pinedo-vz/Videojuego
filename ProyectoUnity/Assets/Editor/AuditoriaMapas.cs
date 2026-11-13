@@ -255,6 +255,140 @@ public static class AuditoriaMapas
         return sb.ToString();
     }
 
+    // ---- trampas: lugares donde el jugador cae y ya no puede volver a un spawn ----
+
+    [MenuItem("Herramientas/Buscar trampas en mapas")]
+    public static void BuscarTrampasTodos()
+    {
+        StringBuilder sb = new StringBuilder();
+        foreach (GameObject go in Object.FindObjectsByType<GameObject>(FindObjectsInactive.Exclude))
+        {
+            if (go.transform.parent == null && go.name.StartsWith("ecena", System.StringComparison.OrdinalIgnoreCase))
+                sb.AppendLine(BuscarTrampas(go.name));
+        }
+        Debug.Log(sb.ToString());
+    }
+
+    /// <summary>
+    /// Simula con un CharacterController igual al del prefab (cuerpo.prefab) lo mismo que hace Personaje:
+    /// mover en X, gravedad, saltar solo si isGrounded, el techo corta el salto y control total en el aire.
+    /// Desde los spawns prueba saltos y pasos a cada lado; luego revisa desde que posiciones se puede regresar a un spawn.
+    /// "sin salida" = posiciones a las que se llega pero de las que no se sale. "atorado" = queda en el aire sin isGrounded.
+    /// </summary>
+    public static string BuscarTrampas(string nombreMapa)
+    {
+        const float DT = 1f / 30f;
+        GameObject mapa = GameObject.Find(nombreMapa);
+        if (mapa == null) return nombreMapa + ": no existe";
+        CharacterController modelo = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/cuerpo.prefab").GetComponent<CharacterController>();
+        GameObject prueba = new GameObject("__ccPrueba");
+        prueba.hideFlags = HideFlags.HideAndDontSave;
+        CharacterController cc = prueba.AddComponent<CharacterController>();
+        cc.height = modelo.height; cc.radius = modelo.radius; cc.center = modelo.center; cc.stepOffset = modelo.stepOffset;
+        cc.slopeLimit = modelo.slopeLimit; cc.skinWidth = modelo.skinWidth; cc.minMoveDistance = 0f;
+        try
+        {
+            List<Transform> spawns = GameManager.BuscarPuntos(mapa, GameManager.PREFIJO_JUGADOR);
+            if (spawns.Count == 0) return nombreMapa + ": sin spawns";
+            float z = spawns[0].position.z;
+            float yMin = float.MaxValue;
+            foreach (Collider c in mapa.GetComponentsInChildren<Collider>()) yMin = Mathf.Min(yMin, c.bounds.min.y);
+            yMin -= 3f;
+
+            // estado: 0 aterrizo, 1 cayo al vacio, 2 atorado en el aire, 3 se acabo el tiempo
+            int estado = 0;
+            System.Func<Vector3, bool, float, float, float, Vector3> simular = (p, saltar, vx0, t1, vx1) =>
+            {
+                prueba.transform.position = p; Physics.SyncTransforms();
+                float vy = saltar ? SALTO : -2f, t = 0f; int quieto = 0; Vector3 antes = p; bool despego = !saltar;
+                while (t < 2.5f)
+                {
+                    cc.Move(new Vector3((t < t1 ? vx0 : vx1) * DT, 0f, 0f));
+                    if (cc.isGrounded && vy < 0f) vy = -2f;
+                    vy = Mathf.Max(vy - GRAVEDAD * DT, -30f);
+                    cc.Move(new Vector3(0f, vy * DT, z - prueba.transform.position.z));
+                    if ((cc.collisionFlags & CollisionFlags.Above) != 0 && vy > 0f) vy = 0f;
+                    t += DT;
+                    Vector3 q = prueba.transform.position;
+                    if (Mathf.Abs(q.y - p.y) > 0.05f || Mathf.Abs(q.x - p.x) > 0.05f) despego = true;
+                    if (cc.isGrounded && vy <= 0f && (despego || t > 0.3f)) { estado = 0; return q; }
+                    if (q.y < yMin) { estado = 1; return q; }
+                    if ((q - antes).sqrMagnitude < 0.0001f && !cc.isGrounded) { if (++quieto > 15) { estado = 2; return q; } }
+                    else quieto = 0;
+                    antes = q;
+                }
+                estado = 3; return prueba.transform.position;
+            };
+            System.Func<Vector3, string> clave = p => Mathf.RoundToInt(p.x * 10f) + "," + Mathf.RoundToInt(p.y * 10f);
+
+            // {velocidad X hasta t1, t1, velocidad X despues}: saltos rectos, verticales y con cambio de direccion en el aire
+            float V = VELOCIDAD;
+            float[][] acciones = {
+                new[]{-V,9f,-V}, new[]{V,9f,V}, new[]{0f,9f,0f},
+                new[]{0f,0.25f,V}, new[]{0f,0.25f,-V}, new[]{0f,0.5f,V}, new[]{0f,0.5f,-V},
+                new[]{V,0.15f,0f}, new[]{-V,0.15f,0f}, new[]{V,0.3f,0f}, new[]{-V,0.3f,0f} };
+
+            Dictionary<string, Vector3> pos = new Dictionary<string, Vector3>();
+            Dictionary<string, List<string>> ady = new Dictionary<string, List<string>>();
+            Queue<string> cola = new Queue<string>();
+            Dictionary<string, Vector3> atorados = new Dictionary<string, Vector3>();
+            System.Func<Vector3, string> agregar = p =>
+            {
+                string k = clave(p);
+                if (!pos.ContainsKey(k)) { pos[k] = p; ady[k] = new List<string>(); cola.Enqueue(k); }
+                return k;
+            };
+            List<string> inicio = new List<string>();
+            foreach (Transform s in spawns)
+            {
+                Vector3 q = simular(new Vector3(s.position.x, s.position.y + 0.3f, z), false, 0f, 9f, 0f);
+                if (estado == 0) inicio.Add(agregar(q));
+            }
+            while (cola.Count > 0 && pos.Count < 5000)
+            {
+                string k = cola.Dequeue(); Vector3 p = pos[k];
+                List<Vector3> destinos = new List<Vector3>();
+                foreach (float[] a in acciones)
+                {
+                    Vector3 q = simular(p, true, a[0], a[1], a[2]);
+                    if (estado == 0) destinos.Add(q); else if (estado == 2) atorados[clave(q)] = q;
+                }
+                foreach (float d in new[] { -V, V })
+                {
+                    Vector3 q = simular(p, false, d, 0.02f, 0f); // un paso de ~0.17 m
+                    if (estado == 0) destinos.Add(q); else if (estado == 2) atorados[clave(q)] = q;
+                }
+                foreach (Vector3 q in destinos) { string kq = agregar(q); if (kq != k && !ady[k].Contains(kq)) ady[k].Add(kq); }
+            }
+
+            // de que posiciones se puede regresar a un spawn (busqueda hacia atras)
+            Dictionary<string, List<string>> inversa = new Dictionary<string, List<string>>();
+            foreach (var kv in ady) foreach (string d in kv.Value)
+            {
+                if (!inversa.ContainsKey(d)) inversa[d] = new List<string>();
+                inversa[d].Add(kv.Key);
+            }
+            HashSet<string> sale = new HashSet<string>(); Queue<string> c2 = new Queue<string>();
+            foreach (string k in inicio) if (sale.Add(k)) c2.Enqueue(k);
+            while (c2.Count > 0)
+            {
+                string k = c2.Dequeue();
+                if (!inversa.ContainsKey(k)) continue;
+                foreach (string a in inversa[k]) if (sale.Add(a)) c2.Enqueue(a);
+            }
+
+            List<Vector3> sinSalida = new List<Vector3>();
+            foreach (var kv in pos) if (!sale.Contains(kv.Key)) sinSalida.Add(kv.Value);
+            sinSalida.Sort((a, b) => a.x.CompareTo(b.x));
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("=== " + nombreMapa + " posiciones=" + pos.Count + " sin salida=" + sinSalida.Count + " atorado=" + atorados.Count);
+            foreach (Vector3 p in sinSalida) sb.AppendLine("  SIN SALIDA " + p.ToString("F1"));
+            foreach (Vector3 p in atorados.Values) sb.AppendLine("  ATORADO " + p.ToString("F1"));
+            return sb.ToString();
+        }
+        finally { Object.DestroyImmediate(prueba); }
+    }
+
     private static bool PuedeIr(Segmento a, Segmento b)
     {
         float dy = b.y - a.y;
