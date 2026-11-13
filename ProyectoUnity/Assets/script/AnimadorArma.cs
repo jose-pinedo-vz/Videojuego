@@ -170,9 +170,13 @@ public class AnimadorArma : MonoBehaviour
 
     private void AlDisparar(Arma arma, LineRenderer trazo)
     {
-        animator.SetTrigger("Disparar");
+        bool esCuerpoACuerpo = arma is ArmaMachete || arma is ArmaEscudo;
+        if (!esCuerpoACuerpo)
+        {
+            animator.SetTrigger("Disparar");
+            retroceso = retrocesoMaximo;
+        }
 
-        retroceso = retrocesoMaximo;
         Vector3 inicio = arma.UltimoInicioTrazo;
         Vector3 fin = arma.UltimoFinTrazo;
         if (trazo != null && trazo.positionCount >= 2 && (inicio == Vector3.zero && fin == Vector3.zero))

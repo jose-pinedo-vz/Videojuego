@@ -62,8 +62,23 @@ public class Personaje : NetworkBehaviour
     private float revisarSpawnEn = 0f;
     private bool muriendo = false;
     private const float DURACION_MUERTE = 1.1f; // segundos que dura el modelo hecho pedazos antes de reaparecer
+    private const float DURACION_INMUNIDAD_SPAWN = 3.0f; // inmunidad temporal al reaparecer (se cancela al disparar/atacar)
     private const int CUBOS_MUERTE = 22;       // cantidad de cubitos en que se rompe el modelo
     private const float DISTANCIA_CAIDA = 12f; // cuanto puede bajar del ultimo suelo pisado antes de considerarse caido del mapa
+
+    public bool EstaMuriendo => muriendo;
+
+    // Inmunidad temporal tras reaparecer: el duenio la controla, todos la ven (aura protectora) y el servidor la valida
+    public NetworkVariable<bool> inmune = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private bool inmuneLocal = false;
+    private float tiempoFinInmunidadLocal = 0f;
+    private Coroutine corrutinaInmunidad;
+    private GameObject auraInmunidadObj;
+    private Material auraInmunidadMat;
+    private Vector3 escalaBaseAura = Vector3.one * 2.1f;
+
+    public bool EstaInmune => IsSpawned ? inmune.Value : inmuneLocal;
+    public float TiempoRestanteInmunidad => EstaInmune ? Mathf.Max(0f, tiempoFinInmunidadLocal - Time.time) : 0f;
 
     // bajas (kills) del jugador, solo el servidor las escribe y todos las leen para el marcador
     public NetworkVariable<int> bajas = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
@@ -98,6 +113,146 @@ public class Personaje : NetworkBehaviour
         RefrescarAnimator();
     }
 
+    public override void OnNetworkSpawn()
+    {
+        base.OnNetworkSpawn();
+        inmune.OnValueChanged += AlCambiarInmunidad;
+        AplicarVisualInmunidad(inmune.Value);
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        inmune.OnValueChanged -= AlCambiarInmunidad;
+        DesactivarInmunidadSpawn();
+        base.OnNetworkDespawn();
+    }
+
+    private void AlCambiarInmunidad(bool viejo, bool nuevo)
+    {
+        AplicarVisualInmunidad(nuevo);
+    }
+
+    private void AsegurarAuraInmunidad()
+    {
+        if (auraInmunidadObj != null) return;
+
+        Transform existente = transform.Find("AuraInmunidad");
+        if (existente != null)
+        {
+            auraInmunidadObj = existente.gameObject;
+            MeshRenderer mrExistente = auraInmunidadObj.GetComponent<MeshRenderer>();
+            if (mrExistente != null) auraInmunidadMat = mrExistente.material;
+            return;
+        }
+
+        auraInmunidadObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        auraInmunidadObj.name = "AuraInmunidad";
+        auraInmunidadObj.transform.SetParent(transform, false);
+
+        Collider colAura = auraInmunidadObj.GetComponent<Collider>();
+        if (colAura != null) Destroy(colAura);
+
+        Vector3 centroLocal = controlador != null ? controlador.center : new Vector3(0f, 0.9f, 0f);
+        float altoLocal = controlador != null ? Mathf.Max(1.0f, controlador.height) : 1.8f;
+        auraInmunidadObj.transform.localPosition = centroLocal;
+        float diametro = altoLocal * 1.25f;
+        escalaBaseAura = new Vector3(diametro, diametro, diametro);
+        auraInmunidadObj.transform.localScale = escalaBaseAura;
+
+        MeshRenderer mr = auraInmunidadObj.GetComponent<MeshRenderer>();
+        if (mr != null)
+        {
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            Shader sh = Shader.Find("Sprites/Default");
+            if (sh == null) sh = Shader.Find("Universal Render Pipeline/Unlit");
+            auraInmunidadMat = new Material(sh);
+            auraInmunidadMat.color = new Color(0.32f, 0.92f, 1.0f, 0.32f);
+            mr.material = auraInmunidadMat;
+        }
+
+        auraInmunidadObj.SetActive(false);
+    }
+
+    private void AplicarVisualInmunidad(bool activo)
+    {
+        if (!activo && auraInmunidadObj == null) return;
+        AsegurarAuraInmunidad();
+        if (auraInmunidadObj != null) auraInmunidadObj.SetActive(activo);
+    }
+
+    private void ActualizarPulsoAuraInmunidad()
+    {
+        if (!EstaInmune)
+        {
+            if (auraInmunidadObj != null && auraInmunidadObj.activeSelf)
+                auraInmunidadObj.SetActive(false);
+            return;
+        }
+
+        AsegurarAuraInmunidad();
+        if (auraInmunidadObj == null) return;
+        if (!auraInmunidadObj.activeSelf) auraInmunidadObj.SetActive(true);
+
+        float pulso = 0.5f + 0.5f * Mathf.Sin(Time.time * 12f);
+        auraInmunidadObj.transform.localScale = escalaBaseAura * Mathf.Lerp(0.95f, 1.08f, pulso);
+
+        if (auraInmunidadMat != null)
+        {
+            float restante = TiempoRestanteInmunidad;
+            float alpha = restante > 0f && restante < 1.0f && (!IsSpawned || IsOwner)
+                ? Mathf.Lerp(0.14f, 0.45f, 0.5f + 0.5f * Mathf.Sin(Time.time * 24f))
+                : Mathf.Lerp(0.22f, 0.42f, pulso);
+            auraInmunidadMat.color = new Color(0.32f, 0.92f, 1.0f, alpha);
+        }
+    }
+
+    public void ActivarInmunidadSpawn(float duracion = DURACION_INMUNIDAD_SPAWN)
+    {
+        if (IsSpawned && !IsOwner) return;
+        DesactivarInmunidadSpawn();
+        corrutinaInmunidad = StartCoroutine(CorrutinaInmunidadSpawn(duracion));
+    }
+
+    public void DesactivarInmunidadSpawn()
+    {
+        if (corrutinaInmunidad != null)
+        {
+            StopCoroutine(corrutinaInmunidad);
+            corrutinaInmunidad = null;
+        }
+        tiempoFinInmunidadLocal = 0f;
+        inmuneLocal = false;
+        if (IsSpawned && IsOwner && inmune.Value)
+        {
+            inmune.Value = false;
+        }
+        AplicarVisualInmunidad(false);
+    }
+
+    public void CancelarInmunidadPorAtaque()
+    {
+        if (!EstaInmune) return;
+        if (IsSpawned && !IsOwner) return;
+        DesactivarInmunidadSpawn();
+    }
+
+    private IEnumerator CorrutinaInmunidadSpawn(float duracion)
+    {
+        inmuneLocal = true;
+        tiempoFinInmunidadLocal = Time.time + duracion;
+        if (IsSpawned && IsOwner) inmune.Value = true;
+        AplicarVisualInmunidad(true);
+
+        yield return new WaitForSeconds(duracion);
+
+        inmuneLocal = false;
+        tiempoFinInmunidadLocal = 0f;
+        if (IsSpawned && IsOwner) inmune.Value = false;
+        AplicarVisualInmunidad(false);
+        corrutinaInmunidad = null;
+    }
+
     public void RefrescarAnimator()
     {
         animator = GetComponent<Animator>();
@@ -118,6 +273,7 @@ public class Personaje : NetworkBehaviour
         foreach (Renderer r in GetComponentsInChildren<Renderer>(false))
         {
             if (r == null || !r.enabled) continue;
+            if (r.gameObject.name == "AuraInmunidad") continue;
             if (r is SkinnedMeshRenderer) return true;
             if (r is MeshRenderer
                 && r.GetComponentInParent<Arma>() == null
@@ -365,6 +521,7 @@ public class Personaje : NetworkBehaviour
         // AnimadorPuente maneja el Animator del dueño directamente.
         // Aquí solo actualizamos para los clientes que observan a este jugador.
         ActualizarAnimator();
+        ActualizarPulsoAuraInmunidad();
     }
 
     // Aplica el estado sincronizado al Animator local.
@@ -415,6 +572,11 @@ public class Personaje : NetworkBehaviour
     public virtual void RecibirImpactoDeDisparo(Personaje atacante, Vector3 puntoImpacto, Vector3 direccionDisparo)
     {
         if (muriendo) return;
+        if (EstaInmune)
+        {
+            Sonidos.Reproducir("impacto", puntoImpacto, 0.55f, 1.55f);
+            return;
+        }
 
         // 1. Verificar bloqueo del Escudo Troyano
         if (armaEquipada is ArmaEscudo escudo && escudo.BloqueaImpacto(puntoImpacto, direccionDisparo))
@@ -436,7 +598,7 @@ public class Personaje : NetworkBehaviour
 
     public virtual void RecibirDaño(Personaje atacante)
     {
-        if (muriendo) return;
+        if (muriendo || EstaInmune) return;
         Debug.Log("Auch, me dio: "+atacante);
 
         // Si tambien tenia barrenos al recibir daño directo, detonar
@@ -462,7 +624,7 @@ public class Personaje : NetworkBehaviour
     /// </summary>
     public virtual void RecibirDañoExplosion(Personaje atacante)
     {
-        if (muriendo) return;
+        if (muriendo || EstaInmune) return;
         if (!IsSpawned)
         {
             StartCoroutine(MorirYReaparecer(posicionInicial));
@@ -485,7 +647,7 @@ public class Personaje : NetworkBehaviour
     {
         if (!referenciaVictima.TryGet(out NetworkObject objetoVictima)) return;
         Personaje victima = objetoVictima.GetComponent<Personaje>();
-        if (victima == null || victima == this) return;
+        if (victima == null || victima == this || victima.EstaInmune || victima.EstaMuriendo) return;
 
         bajas.Value++; //Se le da un punto al que lo mato
 
@@ -500,7 +662,7 @@ public class Personaje : NetworkBehaviour
     {
         if (!referenciaVictima.TryGet(out NetworkObject objetoVictima)) return;
         Personaje victima = objetoVictima.GetComponent<Personaje>();
-        if (victima == null) return;
+        if (victima == null || victima.EstaInmune || victima.EstaMuriendo) return;
 
         if (victima != this)
         {
@@ -514,6 +676,7 @@ public class Personaje : NetworkBehaviour
 
     public void RecibirEmpujeEscudo(Vector3 impulso)
     {
+        if (muriendo || EstaInmune) return;
         if (!IsSpawned || IsOwner)
         {
             AplicarEmpujeLocal(impulso);
@@ -580,6 +743,7 @@ public class Personaje : NetworkBehaviour
     public void ReiniciarCargadoresNuevaPartidaRpc()
     {
         LimpiarCargadoresExtra();
+        DesactivarInmunidadSpawn();
     }
 
     // Pisar una cascara: explosion pequena que lo tira y lo deja como muñeco de plastilina (ragdoll) unos segundos.
@@ -609,7 +773,7 @@ public class Personaje : NetworkBehaviour
 
     private void IniciarCaidaPlatano(Vector3 origenCascara)
     {
-        if (muriendo || EnRagdoll) return; // ya esta en el suelo o muriendo
+        if (muriendo || EstaInmune || EnRagdoll) return; // ya esta en el suelo, inmune o muriendo
 
         // resbala: sale despedido hacia donde caminaba (adelante y arriba) y cae de espaldas
         float dirX = DireccionHorizontal < 0f ? -1f : 1f;
@@ -746,6 +910,7 @@ public class Personaje : NetworkBehaviour
         foreach (Renderer r in modelo.GetComponentsInChildren<Renderer>(false))
         {
             if (!(r is MeshRenderer) && !(r is SkinnedMeshRenderer)) continue;
+            if (r.gameObject.name == "AuraInmunidad") continue;
             if (r.GetComponentInParent<Arma>() != null) continue;
             if (!r.enabled) continue;
             if (r.GetComponent<TMPro.TMP_Text>() != null)
@@ -816,6 +981,7 @@ public class Personaje : NetworkBehaviour
     private IEnumerator MorirYReaparecer(Vector3 destino)
     {
         muriendo = true;
+        DesactivarInmunidadSpawn();
         if (EnRagdoll) ragdoll.Terminar(false); // si moria en pleno ragdoll, primero se arma el cuerpo de nuevo
         velocidadCaida = Vector3.zero;
         velocidadEmpuje = Vector3.zero;
@@ -834,6 +1000,7 @@ public class Personaje : NetworkBehaviour
         Teletransportar(destino);
         FijarSpawn(destino);
         muriendo = false;
+        ActivarInmunidadSpawn(DURACION_INMUNIDAD_SPAWN);
     }
 
     public virtual void morir(Personaje atacante)

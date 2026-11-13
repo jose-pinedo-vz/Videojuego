@@ -304,13 +304,44 @@ public class GameManager : NetworkBehaviour
             if (r != null) r.TeleportDuenioRpc(AsignarSpawn());
         }
 
-        // Activar armas aleatorias en el mapa
+        // Primero activamos el mapa actual en clientes y host para que sus colliders y SueloSeguro queden listos
+        iniciarClienteRpc(indiceMapa);
+
+        // Activar armas aleatorias y coberturas/plataformas destruibles en el mapa activo
         GestorArmas ga = GestorArmas.Instancia;
         if (ga == null) ga = gameObject.AddComponent<GestorArmas>();
         if (ga != null) ga.IniciarRondaArmas(ga.ObtenerOCrearSpawnsEnMapa(MapaActual()));
         else Debug.LogWarning("GameManager: no se encontró GestorArmas");
 
-        iniciarClienteRpc(indiceMapa);
+        GestorEntornoDestruible ged = GestorEntornoDestruible.ObtenerOCrear();
+        if (ged != null) ged.IniciarRondaObstaculosServidor(MapaActual());
+    }
+
+    [Rpc(SendTo.ClientsAndHost)]
+    public void SincronizarObstaculosDeEscenaClientRpc()
+    {
+        GestorEntornoDestruible ged = GestorEntornoDestruible.ObtenerOCrear();
+        if (ged != null) ged.AplicarObstaculosDeEscenaLocal(MapaActual());
+    }
+
+    [Rpc(SendTo.ClientsAndHost)]
+    public void SincronizarObstaculosRondaClientRpc(int[] ids, int[] tipos, Vector3[] posiciones)
+    {
+        GestorEntornoDestruible ged = GestorEntornoDestruible.ObtenerOCrear();
+        if (ged != null) ged.AplicarObstaculosRondaLocal(ids, tipos, posiciones);
+    }
+
+    [Rpc(SendTo.Server)]
+    public void SolicitarDestruirObstaculoServerRpc(int idObstaculo, Vector3 origenImpacto, Vector3 direccionImpacto, bool porExplosion)
+    {
+        DestruirObstaculoClientRpc(idObstaculo, origenImpacto, direccionImpacto, porExplosion);
+    }
+
+    [Rpc(SendTo.ClientsAndHost)]
+    public void DestruirObstaculoClientRpc(int idObstaculo, Vector3 origenImpacto, Vector3 direccionImpacto, bool porExplosion)
+    {
+        GestorEntornoDestruible ged = GestorEntornoDestruible.Instancia;
+        if (ged != null) ged.AplicarDestruccionRemota(idObstaculo, origenImpacto, direccionImpacto, porExplosion);
     }
 
     [Rpc(SendTo.ClientsAndHost)]
@@ -471,6 +502,8 @@ public class GameManager : NetworkBehaviour
     [Rpc(SendTo.ClientsAndHost)]
     public void finPartidaClienteRpc()
     {
+        if (GestorEntornoDestruible.Instancia != null)
+            GestorEntornoDestruible.Instancia.LimpiarObstaculos();
         if (texto != null) texto.mostrarPanelFin();
     }
 

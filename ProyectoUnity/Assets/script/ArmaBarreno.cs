@@ -88,6 +88,7 @@ public class ArmaBarreno : Arma
         ActualizarVisualPaquete();
 
         Personaje lanzador = jugadorQueLaEquipo;
+        lanzador.CancelarInmunidadPorAtaque();
         float dirX = lanzador.DireccionHorizontal;
         // sale de la mano (donde esta el modelo del arma); el modelo de la mano se queda
         Vector3 origen = CentroBarrenoMano();
@@ -300,11 +301,27 @@ public class ArmaBarreno : Arma
         Sonidos.Reproducir("disparo_barret", centro, 0.85f, 0.65f);
         EfectosDisparo.Sacudir(0.28f);
 
+        Collider[] hits = Physics.OverlapSphere(centro, radio, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+
+        // Destruir obstaculos destruibles alcanzados por la explosion del Barreno
+        HashSet<ObjetoDestruible> destruibles = new HashSet<ObjetoDestruible>();
+        foreach (Collider col in hits)
+        {
+            if (col == null) continue;
+            ObjetoDestruible obs = col.GetComponentInParent<ObjetoDestruible>();
+            if (obs == null || obs.Destruido || !destruibles.Add(obs)) continue;
+
+            Vector3 dir = obs.CentroVisual - centro;
+            if (aplicarDanoAutoritativo)
+                GestorEntornoDestruible.SolicitarDestruirObstaculo(obs, centro, dir, true);
+            else
+                obs.DestruirLocal(centro, dir, true);
+        }
+
         if (!aplicarDanoAutoritativo) return;
 
         // Daña y mata a todos los personajes dentro del radio medio, INCLUYENDO al propio portador/lanzador
         HashSet<Personaje> afectados = new HashSet<Personaje>();
-        Collider[] hits = Physics.OverlapSphere(centro, radio, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         foreach (Collider col in hits)
         {
             if (col == null) continue;

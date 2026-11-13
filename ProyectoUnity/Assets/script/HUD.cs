@@ -48,9 +48,13 @@ public class HUD : MonoBehaviour
         string teclaSecundaria = AjustesJuego.NombreTecla(Accion.Secundaria);
         string teclaRecargar = AjustesJuego.NombreTecla(Accion.Recargar);
         string sufijoCargador = cargadoresExtra > 0 ? $"  |  +{cargadoresExtra} carg. [{teclaRecargar}]" : "";
+        bool esInmune = jugadorLocal != null && jugadorLocal.EstaInmune;
+        string sufijoInmunidad = esInmune
+            ? $"  <color=#5CE1E6>[INMUNE {jugadorLocal.TiempoRestanteInmunidad:F1}s]</color>"
+            : "";
 
         if (txt_arma != null)
-            txt_arma.text = arma != null ? arma.NombreMostrado : "Sin arma";
+            txt_arma.text = (arma != null ? arma.NombreMostrado : "Sin arma") + sufijoInmunidad;
 
         if (txt_municion != null)
         {

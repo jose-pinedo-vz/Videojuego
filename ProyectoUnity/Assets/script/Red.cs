@@ -20,6 +20,11 @@ public class Red : NetworkBehaviour
         {
             if (r == null) continue;
             if (r is LineRenderer || r is ParticleSystemRenderer) continue;
+            if (r.gameObject.name == "AuraInmunidad")
+            {
+                if (!visible) r.gameObject.SetActive(false);
+                continue;
+            }
 
             Arma armaPadre = r.GetComponentInParent<Arma>();
             if (armaPadre != null)
@@ -277,7 +282,11 @@ public class Red : NetworkBehaviour
 
         if (cc != null) cc.enabled = true;
         Personaje p = GetComponent<Personaje>();
-        if (p != null) p.FijarSpawn(posicion);
+        if (p != null)
+        {
+            p.DesactivarInmunidadSpawn();
+            p.FijarSpawn(posicion);
+        }
     }
 
     [Rpc(SendTo.NotOwner)]

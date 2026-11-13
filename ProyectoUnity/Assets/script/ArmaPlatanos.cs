@@ -84,6 +84,7 @@ public class ArmaPlatanos : Arma
         ActualizarPlatanosVisibles();
 
         Personaje lanzador = jugadorQueLaEquipo;
+        lanzador.CancelarInmunidadPorAtaque();
         float dirX = lanzador.DireccionHorizontal;
         // la cascara cae al piso pegada al personaje (algo detras, contra la direccion en que mira)
         Vector3 origen = lanzador.transform.position + new Vector3(-dirX * distanciaDetras, alturaSuelta, 0f);

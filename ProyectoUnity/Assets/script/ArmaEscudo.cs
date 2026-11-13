@@ -76,6 +76,7 @@ public class ArmaEscudo : Arma
         tiempoUltimoDisparo = Time.time;
         tiempoFinGolpe = Time.time + 0.36f;
         ContadorDisparos++;
+        jugadorQueLaEquipo.CancelarInmunidadPorAtaque();
 
         float dirX = jugadorQueLaEquipo.DireccionHorizontal;
         Vector3 posJugador = jugadorQueLaEquipo.transform.position;
