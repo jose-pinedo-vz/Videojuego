@@ -41,3 +41,9 @@ crashlytics-build.properties
 ProyectoUnity/mono_crash.*
 ProyectoUnity/Assets/_Recovery/
 ProyectoUnity/Assets/_Recovery.meta
+
+# Videos crudos locales generados en el Set de Grabacion
+ProyectoUnity/Assets/Grabaciones/*.avi
+ProyectoUnity/Assets/Grabaciones/*.avi.meta
+ProyectoUnity/Assets/Grabaciones/*.mp4
+ProyectoUnity/Assets/Grabaciones/*.mp4.meta

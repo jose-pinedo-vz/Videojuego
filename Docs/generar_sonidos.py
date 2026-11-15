@@ -13,7 +13,9 @@ import numpy as np
 
 SR = 22050
 rng = np.random.default_rng(7)
-SALIDA = sys.argv[1] if len(sys.argv) > 1 else "."
+args = [a for a in sys.argv[1:] if not a.startswith("--")]
+flags = {a for a in sys.argv[1:] if a.startswith("--")}
+SALIDA = args[0] if args else "."
 os.makedirs(SALIDA, exist_ok=True)
 
 
@@ -322,6 +324,139 @@ def amb_sala():
     return aire + zumbido
 
 
+# ---------------------------------------------------------------- voces de animales (Cheto, Kaiser, Dorito, CR7)
+def _sint_armonicos(frec, pesos, vibrato_hz=0.0, vibrato_amp=0.0):
+    t = np.arange(len(frec)) / SR
+    f = frec if vibrato_hz <= 0 else frec * (1.0 + vibrato_amp * np.sin(2 * np.pi * vibrato_hz * t))
+    fase = 2 * np.pi * np.cumsum(f) / SR
+    s = np.zeros_like(fase)
+    for k, w in enumerate(pesos, start=1):
+        s += w * np.sin(k * fase)
+    return s
+
+
+def voz_gato_1():
+    d = 0.52
+    t = tiempo(d)
+    u = t / d
+    frec = 430 + 390 * np.sin(np.pi * np.clip((u - 0.05) / 0.72, 0, 1)) ** 0.85 - 90 * u
+    arm = _sint_armonicos(frec, [1.0, 0.55, 0.30, 0.16, 0.08], vibrato_hz=7.0, vibrato_amp=0.015)
+    env = np.sin(np.pi * np.clip(u, 0, 1)) ** 0.65 * np.exp(-1.1 * u)
+    return banda(arm, 280, 3200) * env
+
+
+def voz_gato_2():
+    d = 0.40
+    t = tiempo(d)
+    u = t / d
+    frec = 470 + 430 * np.sin(np.pi * np.clip(u / 0.85, 0, 1))
+    arm = _sint_armonicos(frec, [1.0, 0.52, 0.25, 0.12])
+    trino = 0.75 + 0.25 * np.sin(2 * np.pi * 24 * t) * np.exp(-t / 0.12)
+    env = np.sin(np.pi * np.clip(u, 0, 1)) ** 0.6
+    return banda(arm * trino, 320, 3400) * env
+
+
+def voz_gato_dano():
+    d = 0.42
+    t = tiempo(d)
+    u = t / d
+    frec = 1150 * (0.48 ** u)
+    maullido = _sint_armonicos(frec, [1.0, 0.65, 0.35, 0.18]) * sobre(d, 0.008, 0.18)
+    bufido = banda(ruido(d), 2200, 6800) * sobre(d, 0.015, 0.16) * 0.65
+    return maullido * 0.8 + bufido
+
+
+def _ladrido(d, f_ini, f_fin):
+    t = tiempo(d)
+    u = t / d
+    frec = f_ini + (f_fin - f_ini) * (u ** 0.55)
+    ladr = _sint_armonicos(frec, [1.0, 0.85, 0.55, 0.30, 0.14])
+    gru = banda(ruido(d), 550, 2200) * sobre(d, 0.005, 0.05) * 0.45
+    return banda(ladr, 110, 2600) * sobre(d, 0.012, 0.085) + gru
+
+
+def voz_perro_1():
+    return _ladrido(0.25, 295, 130)
+
+
+def voz_perro_2():
+    b1 = _ladrido(0.20, 285, 135)
+    b2 = _ladrido(0.24, 330, 145)
+    return poner(0.50, [(0.0, b1 * 0.9), (0.21, b2)])
+
+
+def voz_perro_dano():
+    d = 0.34
+    t = tiempo(d)
+    u = t / d
+    frec = 260 + 310 * np.sin(np.pi * np.clip(u / 0.75, 0, 1)) - 70 * u
+    chillido = _sint_armonicos(frec, [1.0, 0.45, 0.20, 0.08]) * np.sin(np.pi * np.clip(u, 0, 1)) ** 0.7
+    return banda(chillido, 200, 3000)
+
+
+def _chillido_raton(d, f0, f1):
+    t = tiempo(d)
+    u = t / d
+    frec = f0 + (f1 - f0) * np.sin(np.pi * u) ** 0.75
+    s = _sint_armonicos(frec, [1.0, 0.32, 0.10], vibrato_hz=28.0, vibrato_amp=0.03)
+    return s * np.sin(np.pi * np.clip(u, 0, 1)) ** 0.6
+
+
+def voz_raton_1():
+    c1 = _chillido_raton(0.085, 2700, 4100)
+    c2 = _chillido_raton(0.095, 2950, 4350)
+    return poner(0.25, [(0.0, c1 * 0.9), (0.115, c2)])
+
+
+def voz_raton_2():
+    c1 = _chillido_raton(0.070, 3000, 4400)
+    c2 = _chillido_raton(0.070, 3200, 4600)
+    c3 = _chillido_raton(0.085, 2850, 4200)
+    return poner(0.32, [(0.0, c1 * 0.85), (0.095, c2 * 0.95), (0.19, c3)])
+
+
+def voz_raton_dano():
+    d = 0.22
+    c1 = barrido(0.09, 4500, 2200) * sobre(0.09, 0.004, 0.045)
+    c2 = barrido(0.10, 4200, 2000) * sobre(0.10, 0.004, 0.05)
+    return poner(d, [(0.0, c1), (0.10, c2 * 0.85)])
+
+
+def _balido_cabra(d, f_base, vib_hz=26.0):
+    t = tiempo(d)
+    u = t / d
+    frec = f_base * (1.06 - 0.14 * u)
+    cuerpo = _sint_armonicos(frec, [1.0, 0.90, 0.75, 0.58, 0.42, 0.28, 0.16], vibrato_hz=vib_hz, vibrato_amp=0.045)
+    tremolo = 0.56 + 0.44 * np.sin(2 * np.pi * vib_hz * t)
+    env = np.minimum(t / 0.025, 1.0) * (1.0 - 0.35 * (u ** 2)) * np.minimum((d - t) / 0.05, 1.0)
+    return banda(cuerpo * tremolo, 200, 2600) * np.clip(env, 0.0, 1.0)
+
+
+def voz_cabra_1():
+    return _balido_cabra(0.55, 255.0, vib_hz=25.0)
+
+
+def voz_cabra_2():
+    return _balido_cabra(0.66, 285.0, vib_hz=28.0)
+
+
+def voz_cabra_dano():
+    d = 0.32
+    t = tiempo(d)
+    u = t / d
+    frec = 335 * (0.64 ** u)
+    cuerpo = _sint_armonicos(frec, [1.0, 0.85, 0.65, 0.45, 0.28], vibrato_hz=30.0, vibrato_amp=0.05)
+    tremolo = 0.60 + 0.40 * np.sin(2 * np.pi * 30.0 * t)
+    return banda(cuerpo * tremolo, 220, 2800) * sobre(d, 0.01, 0.14)
+
+
+CLIPS_VOCES = {
+    "voz_gato_1": voz_gato_1, "voz_gato_2": voz_gato_2, "voz_gato_dano": voz_gato_dano,
+    "voz_perro_1": voz_perro_1, "voz_perro_2": voz_perro_2, "voz_perro_dano": voz_perro_dano,
+    "voz_raton_1": voz_raton_1, "voz_raton_2": voz_raton_2, "voz_raton_dano": voz_raton_dano,
+    "voz_cabra_1": voz_cabra_1, "voz_cabra_2": voz_cabra_2, "voz_cabra_dano": voz_cabra_dano,
+}
+
 CLIPS = {
     "disparo_bereta": disparo_bereta, "disparo_ak47": disparo_ak47, "disparo_mac10": disparo_mac10,
     "disparo_barret": disparo_barret, "disparo_raygun": disparo_raygun,
@@ -330,6 +465,7 @@ CLIPS = {
     "paso1": lambda: paso(0), "paso2": lambda: paso(1),
     "ui_hover": ui_hover, "ui_click": ui_click, "panel": panel, "inicio_ronda": inicio_ronda, "tick": tick, "fin_partida": fin_partida,
     "gota": gota, "clank": clank, "pajaro1": pajaro1, "pajaro2": pajaro2, "reloj": reloj, "crujido": crujido, "nevera": nevera,
+    **CLIPS_VOCES,
 }
 BUCLES = {"amb_menu": amb_menu, "amb_cochera": amb_cochera, "amb_cocina": amb_cocina, "amb_patio": amb_patio, "amb_sala": amb_sala}
 
@@ -508,10 +644,15 @@ def musica_juego4():  # sala: saltarina
 MUSICA = {"musica_menu": musica_menu, "musica_juego1": musica_juego1, "musica_juego2": musica_juego2,
           "musica_juego3": musica_juego3, "musica_juego4": musica_juego4}
 
-for nombre, fn in CLIPS.items():
-    guardar(nombre, fn())
-for nombre, fn in BUCLES.items():
-    guardar(nombre, fn(), pico=0.5)
-for nombre, fn in MUSICA.items():
-    guardar(nombre, fn(), pico=0.8)
-print("listo:", len(CLIPS) + len(BUCLES) + len(MUSICA), "sonidos en", SALIDA)
+if "--solo-voces" in flags:
+    for nombre, fn in CLIPS_VOCES.items():
+        guardar(nombre, fn())
+    print("listo (solo voces):", len(CLIPS_VOCES), "sonidos en", SALIDA)
+else:
+    for nombre, fn in CLIPS.items():
+        guardar(nombre, fn())
+    for nombre, fn in BUCLES.items():
+        guardar(nombre, fn(), pico=0.5)
+    for nombre, fn in MUSICA.items():
+        guardar(nombre, fn(), pico=0.8)
+    print("listo:", len(CLIPS) + len(BUCLES) + len(MUSICA), "sonidos en", SALIDA)
