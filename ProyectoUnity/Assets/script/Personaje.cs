@@ -22,8 +22,13 @@ public class Personaje : NetworkBehaviour
     protected CharacterController controlador;
 
     public bool EstaDeslizando => estaDeslizando;
-    public bool EnSuelo        => controlador != null && controlador.isGrounded;
+    public bool EnSuelo        => ObtenerEnSueloEstable();
     public bool EstaAgachado   => estaAgachado;
+    public float MovimientoAnim        => movimientoSuavizado;
+    public float VelocidadCarreraAnim  => factorVelocidadAnim;
+    public bool EstaCorriendoAnim      => !estaDeslizando && !muriendo && !EnRagdoll && !revisarSpawnPendiente && movimientoSuavizado > 0.1f;
+    public int ContadorSaltosAnim      => contadorSaltosLocal;
+    public bool EsperandoControlAnim   => muriendo || EnRagdoll || revisarSpawnPendiente || !TieneModeloVisible();
     // +1 cuando mira a la izquierda (+X), -1 cuando mira a la derecha (-X)
     public float DireccionHorizontal => (!IsSpawned || IsOwner)
         ? (direccionPersonaje >= 0f ? 1f : -1f)
@@ -37,6 +42,26 @@ public class Personaje : NetworkBehaviour
     // Estados de empuje (Escudo Troyano / retroceso de disparo) y resbalon ragdoll (Cascara de Platano)
     private Vector3 velocidadEmpuje;
     public bool EstaResbalandoPlatano => EnRagdoll;
+
+    // Identidad del personaje y pasivas (0: Cheto, 1: Kaiser, 2: Dorito, 3: CR7)
+    private Red redCache;
+    private float tiempoFinInmunidadEsquive = 0f;
+    private float proximaVozManual = 0f;
+    private float proximaVozDano = 0f;
+    public int IndicePersonaje
+    {
+        get
+        {
+            if (redCache == null) redCache = GetComponent<Red>();
+            return (redCache != null && redCache.IndicePersonajeActual >= 0) ? redCache.IndicePersonajeActual : 0;
+        }
+    }
+    public bool EsCheto  => IndicePersonaje == 0;
+    public bool EsKaiser => IndicePersonaje == 1;
+    public bool EsDorito => IndicePersonaje == 2;
+    public bool EsCR7    => IndicePersonaje == 3;
+    public float MultiplicadorLanzamiento => EsKaiser ? 1.40f : 1.0f;
+    public bool EnVentanaEsquiveDorito => Time.time < tiempoFinInmunidadEsquive;
 
     // Almacen de cargador extra en el personaje (maximo 1 universal; se conserva al soltar/cambiar arma y se pierde al morir)
     public const int MAX_CARGADORES_EXTRA = 1;
@@ -90,12 +115,24 @@ public class Personaje : NetworkBehaviour
     private NetworkVariable<bool>  animDeslizando   = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private NetworkVariable<bool>  animAgachado     = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private NetworkVariable<bool>  animCorriendo    = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<int>   animContadorSaltos   = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private NetworkVariable<float> animVelocidadCarrera = new NetworkVariable<float>(1f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
     protected Animator animator;
     // nombre en minusculas -> hash del parametro real, para que "saltar" encuentre "Saltar" y "estaEnSuelo" encuentre "EstaEnSuelo"
     private Dictionary<string, int> parametrosAnimator = new Dictionary<string, int>();
     // para detectar el flanco ascendente de animSaltar (Trigger, no Bool en el controller nuevo)
     private bool prevAnimSaltar = false;
+    private int contadorSaltosLocal = 0;
+    private int prevContadorSaltosCliente = 0;
+    private float tiempoUltimoSuelo = -10f;
+    private float tiempoBloqueoSueloSalto = -10f;
+    private float velocidadHorizontalX = 0f;
+    private float movimientoSuavizado = 0f;
+    private float factorVelocidadAnim = 1f;
+    private float tiempoRestanteDeslizar = 0f;
+    private float dirDeslizarX = 1f;
+    private HashSet<Personaje> embestidosCR7EnDeslice;
 
 //==================================================================Cositas Obligatorias por C#====================================================================
     protected virtual void Awake() //Siempre es la primera funcion que se llama
@@ -116,6 +153,8 @@ public class Personaje : NetworkBehaviour
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
+        prevContadorSaltosCliente = animContadorSaltos.Value;
+        prevAnimSaltar = animSaltar.Value;
         inmune.OnValueChanged += AlCambiarInmunidad;
         AplicarVisualInmunidad(inmune.Value);
     }
@@ -289,16 +328,20 @@ public class Personaje : NetworkBehaviour
     {
 
         if (IsSpawned && !IsOwner) return; // un objeto por equipo en red
-        if (!TieneModeloVisible()) return; // espera a que empeise la partida
-        if (muriendo) return; // en plena animacion de muerte no se mueve
-        if (EnRagdoll) return; // tirado como muñeco, no se controla
-
-
+        if (!TieneModeloVisible() || muriendo || EnRagdoll)
+        {
+            LimpiarEstadoMovimientoAnim();
+            return;
+        }
 
         if (revisarSpawnPendiente)
         {
             if (revisarSpawnEn < 0f) revisarSpawnEn = Time.time + 0.2f; // empieza a contar cuando el jugador ya esta activo
-            if (Time.time < revisarSpawnEn) return; // quieto mientras el mapa termina de activarse
+            if (Time.time < revisarSpawnEn)
+            {
+                LimpiarEstadoMovimientoAnim();
+                return; // quieto mientras el mapa termina de activarse
+            }
             revisarSpawnPendiente = false;
             AjustarSpawnAlSuelo();
         }
@@ -306,15 +349,16 @@ public class Personaje : NetworkBehaviour
         //Agarra el movimiento y la gravedad
         Mover();
         GravedadJugador();
+        ActualizarRegistroSuelo();
         RecuperarDeCaida();
     
         //teclas especiales para funciones
         if (!estaDeslizando)
         {
-        if (controlador.isGrounded && AjustesJuego.RecienPresionada(Accion.Saltar))
-        {
-            Saltar();
-        }
+            if (PuedeSaltarAhora() && AjustesJuego.RecienPresionada(Accion.Saltar))
+            {
+                Saltar();
+            }
         }
 
         if (armaEquipada != null && Keyboard.current != null)
@@ -349,11 +393,18 @@ public class Personaje : NetworkBehaviour
             armaEquipada = null;
         }
 
-        // el salto termina cuando vuelve a tocar el suelo
-        animEnSuelo.Value = controlador.isGrounded;
-        if (controlador.isGrounded && velocidadCaida.y <= 0f)
+        // el salto termina cuando vuelve a tocar el suelo (con estabilizador contra micro-huecos del terreno)
+        bool sueloAnim = ObtenerEnSueloEstable();
+        animEnSuelo.Value = sueloAnim;
+        if (sueloAnim && velocidadCaida.y <= 0f)
         {
             animSaltar.Value = false;
+        }
+
+        // Grito / voz del personaje con la tecla G
+        if (Keyboard.current != null && Keyboard.current.gKey.wasPressedThisFrame)
+        {
+            SolicitarGritoAnimal();
         }
 
         //LateUpdate();
@@ -372,7 +423,11 @@ public class Personaje : NetworkBehaviour
             velocidadEmpuje = Vector3.MoveTowards(velocidadEmpuje, Vector3.zero, 28f * Time.deltaTime);
         }
 
-        if (estaDeslizando) return;
+        if (estaDeslizando)
+        {
+            ActualizarDeslizarEnFrame();
+            return;
+        }
         
         float movimiento = 0f;
         if (AjustesJuego.Presionada(Accion.Izquierda)) 
@@ -394,9 +449,6 @@ public class Personaje : NetworkBehaviour
         }
         // gira al personaje en Y para que mire hacia la dirección del movimiento
         transform.rotation = Quaternion.Euler(0f, direccionPersonaje > 0 ? 90f : -90f, 0f);
-        animMovimiento.Value = Mathf.Abs(movimiento);
-        // estaCorriendo: se mueve horizontalmente sin deslizarse
-        animCorriendo.Value = (movimiento != 0f) && !estaDeslizando;
 
         bool resbalandoPlatano = EstaResbalandoPlatano;
         bool shiftPresionado = AjustesJuego.Presionada(Accion.Deslizar); //Si se mantiene presionao
@@ -420,8 +472,13 @@ public class Personaje : NetworkBehaviour
             Agachar(false);
         }
 
-        Vector3 direccion = new Vector3(movimiento, 0f, 0f); //Transforma el valor del movimiento (1 o -1) en un valor vectorial para que se mueva en esa direccion
         float velocidadActual = estaAgachado ? velicidadAgachado : velocidad; // agachado camina mas lento
+
+        // Pasiva de Cheto (el gato naranja): corre 25% mas rapido
+        if (EsCheto)
+        {
+            velocidadActual *= 1.25f;
+        }
 
         // Ralentizacion por portar arma pesada (ej. Francotirador Antitanques)
         if (armaEquipada != null && !armaEquipada.EnCaja)
@@ -430,14 +487,61 @@ public class Personaje : NetworkBehaviour
         }
 
         // Si piso una cascara de platano, no se puede mover bien durante unos segundos
+        float dt = Mathf.Min(Time.deltaTime, 0.033f);
         if (resbalandoPlatano)
         {
             velocidadActual *= 0.22f;
-            float tambaleo = Mathf.Sin(Time.time * 18f) * 0.28f;
-            direccion.x += tambaleo;
         }
 
-        controlador.Move(direccion * velocidadActual * Time.deltaTime); //Esta es la instruccion para que se mueva, hacia la direccion dada, con la velocidad dada y en cierto numero de frames
+        bool enSueloParaControl = ObtenerEnSueloEstable();
+        if (enSueloParaControl)
+        {
+            // En tierra conserva respuesta inmediata y nitida
+            velocidadHorizontalX = movimiento * velocidadActual;
+        }
+        else
+        {
+            // En el aire conserva el impulso del despegue con correccion gradual en lugar de acelerar/frenar de golpe
+            if (Mathf.Abs(movimiento) > 0.01f)
+            {
+                bool mismoSentido = Mathf.Abs(velocidadHorizontalX) < 0.05f || Mathf.Sign(movimiento) == Mathf.Sign(velocidadHorizontalX);
+                float topeAire = velocidadActual * 0.65f;
+                float objetivoAire = mismoSentido && Mathf.Abs(velocidadHorizontalX) > topeAire
+                    ? Mathf.Sign(movimiento) * Mathf.Clamp(Mathf.Abs(velocidadHorizontalX), topeAire, velocidadActual)
+                    : movimiento * topeAire;
+                float tasaAire = mismoSentido ? 14f : 24f;
+                velocidadHorizontalX = Mathf.MoveTowards(velocidadHorizontalX, objetivoAire, tasaAire * dt);
+            }
+            else
+            {
+                velocidadHorizontalX = Mathf.MoveTowards(velocidadHorizontalX, 0f, 3.8f * dt);
+            }
+        }
+
+        float tambaleoX = resbalandoPlatano ? Mathf.Sin(Time.time * 18f) * (velocidadActual * 0.28f) : 0f;
+        float desplazamientoX = (velocidadHorizontalX + tambaleoX) * dt;
+        float xAntesMove = transform.position.x;
+        controlador.Move(new Vector3(desplazamientoX, 0f, 0f)); //Esta es la instruccion para que se mueva, hacia la direccion dada, con la velocidad dada y en cierto numero de frames
+
+        // Si choco frontalmente contra una pared y no avanzo, cancela la inercia contra ese muro
+        if ((controlador.collisionFlags & CollisionFlags.Sides) != 0
+            && Mathf.Abs(transform.position.x - xAntesMove) < Mathf.Abs(desplazamientoX) * 0.25f)
+        {
+            velocidadHorizontalX = 0f;
+        }
+
+        // Suavizado ligero (~50 ms) para absorber huecos de 1-2 frames al cambiar A<->D sin perder respuesta
+        float velNorm = velocidad > 0.01f ? Mathf.Clamp01(Mathf.Abs(velocidadHorizontalX) / velocidad) : Mathf.Abs(movimiento);
+        float objetivoMov = enSueloParaControl ? Mathf.Abs(movimiento) : velNorm;
+        float tasaMov = objetivoMov > 0.1f ? 32f : 18f;
+        movimientoSuavizado = Mathf.MoveTowards(movimientoSuavizado, objetivoMov, tasaMov * dt);
+
+        float factorVel = velocidad > 0.01f ? Mathf.Clamp(velocidadActual / velocidad, 0.55f, 1.35f) : 1f;
+        factorVelocidadAnim = Mathf.MoveTowards(factorVelocidadAnim, objetivoMov > 0.01f ? factorVel : 1f, 12f * dt);
+
+        animMovimiento.Value = movimientoSuavizado;
+        animCorriendo.Value = (objetivoMov > 0.01f || movimientoSuavizado > 0.1f) && !estaDeslizando;
+        animVelocidadCarrera.Value = factorVelocidadAnim;
 
     }
     //TERMINADO GRAVEDAD
@@ -461,47 +565,182 @@ public class Personaje : NetworkBehaviour
         //En caso de que lo anterior no suceda entonces simplemente se va reduciendo la posicion del personaje en y hasta que toque el suelo
     }
     //SOLO FALTA QUE APUNTE HACIA ARRIBA... NO SE COMO VA A "APUNTAR" SIQUIERA
+    private void ActualizarRegistroSuelo()
+    {
+        if (controlador != null && controlador.enabled && controlador.isGrounded && Time.time >= tiempoBloqueoSueloSalto)
+        {
+            tiempoUltimoSuelo = Time.time;
+        }
+    }
+
+    private bool PuedeSaltarAhora()
+    {
+        if (controlador == null || !controlador.enabled) return false;
+        if (controlador.isGrounded) return true;
+        return velocidadCaida.y <= 0f && Time.time >= tiempoBloqueoSueloSalto && (Time.time - tiempoUltimoSuelo) <= 0.06f;
+    }
+
+    private bool ObtenerEnSueloEstable()
+    {
+        if (controlador == null || !controlador.enabled) return true;
+        if (Time.time < tiempoBloqueoSueloSalto) return false;
+        if (controlador.isGrounded) return true;
+        return velocidadCaida.y <= 0.1f && (Time.time - tiempoUltimoSuelo) <= 0.09f;
+    }
+
+    private void LimpiarEstadoMovimientoAnim()
+    {
+        estaDeslizando = false;
+        tiempoRestanteDeslizar = 0f;
+        estaAgachado = false;
+        velocidadHorizontalX = 0f;
+        movimientoSuavizado = 0f;
+        factorVelocidadAnim = 1f;
+
+        if (!IsSpawned || IsOwner)
+        {
+            animDeslizando.Value = false;
+            animAgachado.Value = false;
+            animCorriendo.Value = false;
+            animMovimiento.Value = 0f;
+            animVelocidadCarrera.Value = 1f;
+            animEnSuelo.Value = true;
+            animSaltar.Value = false;
+        }
+    }
+
     protected virtual void Saltar()
     {
-        //falta hacer que cuando salte apunte hacia arriba
-        //Debug.Log("Arriba");
-        velocidadCaida.y=salto;
+        // Pasiva de Cheto (el gato naranja): salta 25% mas alto
+        velocidadCaida.y = salto * (EsCheto ? 1.25f : 1.0f);
+        tiempoUltimoSuelo = -10f;
+        tiempoBloqueoSueloSalto = Time.time + 0.11f;
+        contadorSaltosLocal++;
         animSaltar.Value = true;
-        //Como ya tenemos la gravedad y la variable velocidadCaida.y que es practicamente la posicion del personaje en y 
-        //solo hacemos que el personaje cambie esa posoicion aprovechando esta variable
+        animContadorSaltos.Value = contadorSaltosLocal;
+        animEnSuelo.Value = false;
     }
     //TERMINADO DESLIZARSE
     protected virtual void Deslizar(float movimiento)
     {
+        if (estaDeslizando) return; // Para que no castee mucho la tecla de deslizarse
+        estaDeslizando = true;
+        dirDeslizarX = Mathf.Abs(movimiento) > 0.01f ? Mathf.Sign(movimiento) : (direccionPersonaje >= 0f ? 1f : -1f);
+        tiempoRestanteDeslizar = duracionDeslizar;
+        if (EsCR7)
         {
-            if (estaDeslizando) return; // Para quye no castee mucho la tecla de deslizarse
-            StartCoroutine(DeslizarseAhoraSi(movimiento));
+            if (embestidosCR7EnDeslice == null) embestidosCR7EnDeslice = new HashSet<Personaje>();
+            else embestidosCR7EnDeslice.Clear();
         }
-    }
-    //TERMINADO
-    protected virtual IEnumerator DeslizarseAhoraSi(float movimiento)
-    {
-        //Debug.Log("Wiii");
-        estaDeslizando=true;
+        movimientoSuavizado = 1f;
+        factorVelocidadAnim = 1f;
+        velocidadHorizontalX = dirDeslizarX * velocidadDeslizar;
         animDeslizando.Value = true;
         animMovimiento.Value = 1f;
-        Quaternion rotacionOriginal=transform.rotation; //Guardar como estaba antes de deslizarse
-        float tiempoTranscurrido = 0f;
-        while (tiempoTranscurrido < duracionDeslizar)
-        {
-            Vector3 direccionDeslizar = new Vector3(movimiento, 0f, 0f); //De nuevo, para saber cual es el frente y hacia donde se deslizara
-            controlador.Move(direccionDeslizar * velocidadDeslizar * Time.deltaTime); //avanza hacia enfrente
+        animCorriendo.Value = false;
+        animVelocidadCarrera.Value = 1f;
+    }
 
-            tiempoTranscurrido += Time.deltaTime; //Contador del tiempo
-            yield return null; //Espera al siguiente frame y sigue el ciclo para que se vea la animacion en un futuro
-        }
-        estaDeslizando = false;
-        animDeslizando.Value = false;
+    private void ActualizarDeslizarEnFrame()
+    {
+        float dt = Mathf.Min(Time.deltaTime, 0.033f);
+        Vector3 direccionDeslizar = new Vector3(dirDeslizarX, 0f, 0f);
+        controlador.Move(direccionDeslizar * velocidadDeslizar * dt);
 
-        if (AjustesJuego.Presionada(Accion.Deslizar)) //Si no dejo de presionar shift se queda agachado
+        // Pasiva de CR7 (la cabra): al deslizarse hacia un enemigo, lo embiste y lo tumba al suelo
+        if (EsCR7 && embestidosCR7EnDeslice != null)
         {
-            Agachar(true);
+            DetectarEmbestidaCR7EnDeslice(dirDeslizarX, embestidosCR7EnDeslice);
         }
+
+        movimientoSuavizado = 1f;
+        factorVelocidadAnim = 1f;
+        velocidadHorizontalX = dirDeslizarX * velocidadDeslizar;
+        animDeslizando.Value = true;
+        animMovimiento.Value = 1f;
+        animCorriendo.Value = false;
+        animVelocidadCarrera.Value = 1f;
+
+        tiempoRestanteDeslizar -= dt;
+        if (tiempoRestanteDeslizar <= 0f)
+        {
+            estaDeslizando = false;
+            tiempoRestanteDeslizar = 0f;
+            velocidadHorizontalX = dirDeslizarX * (velocidad * 0.7f);
+            animDeslizando.Value = false;
+
+            if (AjustesJuego.Presionada(Accion.Deslizar))
+            {
+                Agachar(true);
+            }
+        }
+    }
+
+    private void DetectarEmbestidaCR7EnDeslice(float dirX, HashSet<Personaje> embestidos)
+    {
+        Vector3 centro = transform.position + new Vector3(dirX * 0.65f, 0.8f, 0f);
+        Vector3 mitadCaja = new Vector3(0.6f, 0.75f, 1.15f);
+        Collider[] hits = Physics.OverlapBox(centro, mitadCaja, Quaternion.identity, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+
+        Vector3 origenOjos = transform.position + Vector3.up * 0.85f;
+        foreach (Collider col in hits)
+        {
+            if (col == null) continue;
+            Personaje rival = col.GetComponentInParent<Personaje>();
+            if (rival == null || rival == this || embestidos.Contains(rival)) continue;
+            if (rival.EstaMuriendo || rival.EstaInmune || rival.EnRagdoll) continue;
+
+            float deltaX = (rival.transform.position.x - transform.position.x) * dirX;
+            if (deltaX < -0.2f || deltaX > 1.45f) continue;
+
+            // Verificar que no haya una pared solida entre CR7 y el rival
+            Vector3 destinoRival = rival.transform.position + Vector3.up * 0.85f;
+            if (HayMuroEntrePuntos(origenOjos, destinoRival)) continue;
+
+            embestidos.Add(rival);
+            CancelarInmunidadPorAtaque();
+            Vector3 impulso = new Vector3(dirX * 14.0f, 4.0f, 0f);
+            rival.RecibirEmbestidaCR7(this, impulso);
+        }
+    }
+
+    public bool HayMuroEntrePuntos(Vector3 a, Vector3 b)
+    {
+        Vector3 dir = b - a;
+        float dist = dir.magnitude;
+        if (dist <= 0.05f) return false;
+        RaycastHit[] impactos = Physics.RaycastAll(a, dir / dist, dist, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        foreach (RaycastHit h in impactos)
+        {
+            if (h.collider == null || h.distance <= 0.04f) continue;
+            if (h.collider.GetComponentInParent<Personaje>() != null) continue;
+            if (h.collider.GetComponentInParent<Arma>() != null) continue;
+            if (h.collider.GetComponentInParent<TrampaCascara>() != null) continue;
+            return true;
+        }
+        return false;
+    }
+
+    public void RecibirEmbestidaCR7(Personaje atacante, Vector3 impulso)
+    {
+        if (muriendo || EstaInmune || EnRagdoll) return;
+
+        Vector3 posEfecto = transform.position + Vector3.up * 1.25f;
+        Sonidos.Reproducir("impacto", posEfecto, 1.0f, 0.9f);
+        if (atacante != null)
+        {
+            SonidosPersonaje.ReproducirVoz(atacante.IndicePersonaje, false, atacante.transform.position, 0.9f);
+        }
+        EfectosDisparo.MostrarTextoComic("¡SIUUU!", posEfecto, new Color(1f, 0.82f, 0.18f));
+        EfectosDisparo.MostrarDestelloImpacto(transform.position + Vector3.up * 0.9f, new Color(1f, 0.78f, 0.2f), 0.38f);
+        if (IsSpawned) MostrarEfectoTextoRedRpc("¡SIUUU!", posEfecto, new Color(1f, 0.82f, 0.18f));
+
+        if (atacante != null && (!atacante.IsSpawned || atacante.IsOwner))
+        {
+            HUD.RegistrarHitmarker(false);
+        }
+
+        RecibirEmpujeEscudo(impulso);
     }
     protected virtual void Agachar(bool agachar)
     {
@@ -532,15 +771,27 @@ public class Personaje : NetworkBehaviour
     {
         if (animator == null || !IsSpawned) return;
         if (IsOwner) return; // el dueño usa AnimadorPuente que lo maneja con input directo
+        if (!animator.isActiveAndEnabled || animator.runtimeAnimatorController == null) return;
 
         AsignarFloat("movimiento",    animMovimiento.Value);
+        AsignarFloat("velocidadAnim", animVelocidadCarrera.Value);
         AsignarBool("EstaEnSuelo",    animEnSuelo.Value);
         AsignarBool("estaDeslizando", animDeslizando.Value);
         AsignarBool("estaAgachado",   animAgachado.Value);
         AsignarBool("estaCorriendo",  animCorriendo.Value);
 
-        // Saltar es Trigger en el controller nuevo: disparar solo en el flanco ascendente
-        if (animSaltar.Value && !prevAnimSaltar) AsignarTrigger("Saltar");
+        // Disparar salto por contador monotónico (nunca pierde saltos rápidos entre ticks de red)
+        bool saltoPorContador = animContadorSaltos.Value != prevContadorSaltosCliente;
+        bool saltoPorBool = animSaltar.Value && !prevAnimSaltar;
+        if (saltoPorContador || saltoPorBool)
+        {
+            if (parametrosAnimator.TryGetValue("saltar", out int hashSaltar))
+            {
+                animator.ResetTrigger(hashSaltar);
+                animator.SetTrigger(hashSaltar);
+            }
+        }
+        prevContadorSaltosCliente = animContadorSaltos.Value;
         prevAnimSaltar = animSaltar.Value;
     }
 
@@ -566,13 +817,14 @@ public class Personaje : NetworkBehaviour
 //=============================================================================FUNCIONES DE MUERTE Y REGENERACIÓN==================================================
     /// <summary>
     /// Procesa un impacto de disparo o ataque considerando:
-    /// 1) Si el personaje porta un Escudo Troyano que cubre la zona golpeada.
-    /// 2) Si el personaje porta Barrenos activos (explotan al recibir un disparo).
+    /// 1) Si el personaje porta un Escudo Troyano que cubre la zona golpeada (los francos pesados tumban al portador).
+    /// 2) Si el personaje es Dorito (Rata) y activa su pasiva de evasión letal (30% armado / 40% desarmado).
+    /// 3) Si el personaje porta Barrenos activos (explotan al recibir un disparo).
     /// </summary>
-    public virtual void RecibirImpactoDeDisparo(Personaje atacante, Vector3 puntoImpacto, Vector3 direccionDisparo)
+    public virtual void RecibirImpactoDeDisparo(Personaje atacante, Vector3 puntoImpacto, Vector3 direccionDisparo, bool esCalibrePesado = false)
     {
         if (muriendo) return;
-        if (EstaInmune)
+        if (EstaInmune || EnVentanaEsquiveDorito)
         {
             Sonidos.Reproducir("impacto", puntoImpacto, 0.55f, 1.55f);
             return;
@@ -581,11 +833,33 @@ public class Personaje : NetworkBehaviour
         // 1. Verificar bloqueo del Escudo Troyano
         if (armaEquipada is ArmaEscudo escudo && escudo.BloqueaImpacto(puntoImpacto, direccionDisparo))
         {
+            if (esCalibrePesado)
+            {
+                // Bala calibre .50 (Barret / Antitanques): el escudo salva la vida pero la energia cinetica tumba al portador
+                float dirGolpe = Mathf.Abs(direccionDisparo.x) > 0.01f
+                    ? Mathf.Sign(direccionDisparo.x)
+                    : (atacante != null ? atacante.DireccionHorizontal : 1f);
+                Vector3 impulsoPesado = new Vector3(dirGolpe * 14.5f, 4.2f, 0f);
+                Vector3 posTexto = puntoImpacto + Vector3.up * 0.35f;
+                EfectosDisparo.MostrarTextoComic("¡GUARDIA ROTA!", posTexto, new Color(1f, 0.55f, 0.15f));
+                if (IsSpawned) MostrarEfectoTextoRedRpc("¡GUARDIA ROTA!", posTexto, new Color(1f, 0.55f, 0.15f));
+                RecibirEmpujeEscudo(impulsoPesado);
+                if (atacante != null && (!atacante.IsSpawned || atacante.IsOwner))
+                {
+                    HUD.RegistrarHitmarker(false);
+                }
+            }
             Debug.Log($"[Escudo] Impacto bloqueado en {name}");
             return;
         }
 
-        // 2. Verificar si porta Barrenos (si alguien le dispara al portador con los barrenos, este explotara)
+        // 2. Pasiva de Dorito (la rata): probabilidad de esquivar un disparo letal (30% armado / 40% desarmado)
+        if (IntentarEsquiveDorito(puntoImpacto))
+        {
+            return;
+        }
+
+        // 3. Verificar si porta Barrenos (si alguien le dispara al portador con los barrenos, este explotara)
         if (armaEquipada is ArmaBarreno barreno && barreno.PuedeExplotarAlRecibirDisparo())
         {
             Debug.Log($"[Barreno] {name} recibio disparo portando barrenos -> ¡Detonacion inmediata!");
@@ -596,9 +870,48 @@ public class Personaje : NetworkBehaviour
         RecibirDaño(atacante);
     }
 
+    private bool IntentarEsquiveDorito(Vector3 puntoImpacto)
+    {
+        if (!EsDorito) return false;
+        if (EnVentanaEsquiveDorito) return true;
+
+        bool desarmado = armaEquipada == null || armaEquipada.EnCaja;
+        float probEsquive = desarmado ? 0.40f : 0.30f;
+        if (Random.value < probEsquive)
+        {
+            tiempoFinInmunidadEsquive = Time.time + 0.42f;
+            EjecutarEfectoEsquiveLocal(puntoImpacto);
+            if (IsSpawned) NotificarEsquiveDoritoRpc(puntoImpacto);
+            return true;
+        }
+        return false;
+    }
+
+    private void EjecutarEfectoEsquiveLocal(Vector3 puntoImpacto)
+    {
+        Vector3 posTexto = transform.position + Vector3.up * 1.3f;
+        Sonidos.Reproducir("deslizar", puntoImpacto, 0.95f, 1.65f);
+        SonidosPersonaje.ReproducirVoz(IndicePersonaje, false, transform.position, 0.85f);
+        EfectosDisparo.MostrarTextoComic("¡ESQUIVADO!", posTexto, new Color(1f, 0.92f, 0.22f));
+        EfectosDisparo.MostrarDestelloImpacto(puntoImpacto, new Color(1f, 0.95f, 0.35f), 0.32f);
+    }
+
+    [Rpc(SendTo.NotMe)]
+    private void NotificarEsquiveDoritoRpc(Vector3 puntoImpacto)
+    {
+        tiempoFinInmunidadEsquive = Time.time + 0.42f;
+        EjecutarEfectoEsquiveLocal(puntoImpacto);
+    }
+
+    [Rpc(SendTo.NotMe)]
+    private void MostrarEfectoTextoRedRpc(string texto, Vector3 pos, Color color)
+    {
+        EfectosDisparo.MostrarTextoComic(texto, pos, color);
+    }
+
     public virtual void RecibirDaño(Personaje atacante)
     {
-        if (muriendo || EstaInmune) return;
+        if (muriendo || EstaInmune || EnVentanaEsquiveDorito) return;
         Debug.Log("Auch, me dio: "+atacante);
 
         // Si tambien tenia barrenos al recibir daño directo, detonar
@@ -606,6 +919,13 @@ public class Personaje : NetworkBehaviour
         {
             barreno.DetonarEnPortador(atacante);
             return;
+        }
+
+        if (atacante != null && (!atacante.IsSpawned || atacante.IsOwner))
+        {
+            Red r = GetComponent<Red>();
+            string etiquetaVictima = r != null ? r.ObtenerEtiquetaJugador() : name;
+            HUD.RegistrarBajaLocal(etiquetaVictima);
         }
 
         if (!IsSpawned)
@@ -625,6 +945,14 @@ public class Personaje : NetworkBehaviour
     public virtual void RecibirDañoExplosion(Personaje atacante)
     {
         if (muriendo || EstaInmune) return;
+
+        if (atacante != null && atacante != this && (!atacante.IsSpawned || atacante.IsOwner))
+        {
+            Red r = GetComponent<Red>();
+            string etiquetaVictima = r != null ? r.ObtenerEtiquetaJugador() : name;
+            HUD.RegistrarBajaLocal(etiquetaVictima);
+        }
+
         if (!IsSpawned)
         {
             StartCoroutine(MorirYReaparecer(posicionInicial));
@@ -806,12 +1134,21 @@ public class Personaje : NetworkBehaviour
     {
         if (ragdoll == null) ragdoll = gameObject.AddComponent<RagdollPlastilina>();
         RefrescarAnimator();
+        EmitirVozDanoConCooldown(0.85f);
         ragdoll.Iniciar(this, animator, controlador, direccion, DURACION_RAGDOLL, esDuenio);
     }
 
     // lo llama el ragdoll al acabar: el duenio se levanta donde cayo, los demas solo recuperan el CharacterController
     public void AlTerminarRagdoll(Vector3 destino, bool esDuenioYLevantarse)
     {
+        prevContadorSaltosCliente = animContadorSaltos.Value;
+        prevAnimSaltar = animSaltar.Value;
+        if (animator != null && animator.isActiveAndEnabled && animator.runtimeAnimatorController != null)
+        {
+            if (parametrosAnimator.TryGetValue("saltar", out int hashSaltar))
+                animator.ResetTrigger(hashSaltar);
+        }
+
         if (esDuenioYLevantarse)
         {
             Teletransportar(destino);
@@ -901,6 +1238,7 @@ public class Personaje : NetworkBehaviour
     // El modelo se rompe en cubitos de colores que salen disparados, caen con fisica y se encogen; despues reaparece
     private IEnumerator AnimacionMuerte()
     {
+        EmitirVozDanoConCooldown(0.9f);
         Transform modelo = (animator != null && animator.transform != transform) ? animator.transform : transform;
 
         // renderizadores del cuerpo (sin el arma ni efectos)
@@ -981,6 +1319,7 @@ public class Personaje : NetworkBehaviour
     private IEnumerator MorirYReaparecer(Vector3 destino)
     {
         muriendo = true;
+        LimpiarEstadoMovimientoAnim();
         DesactivarInmunidadSpawn();
         if (EnRagdoll) ragdoll.Terminar(false); // si moria en pleno ragdoll, primero se arma el cuerpo de nuevo
         velocidadCaida = Vector3.zero;
@@ -1058,6 +1397,28 @@ public class Personaje : NetworkBehaviour
         Teletransportar(destino);
     }
 
+    private void SolicitarGritoAnimal()
+    {
+        if (Time.time < proximaVozManual) return;
+        proximaVozManual = Time.time + 0.9f;
+        int variante = Random.Range(1, 3);
+        SonidosPersonaje.ReproducirVoz(IndicePersonaje, false, transform.position, 0.95f, variante);
+        if (IsSpawned) EmitirVozAnimalRpc(variante);
+    }
+
+    [Rpc(SendTo.NotMe)]
+    private void EmitirVozAnimalRpc(int variante)
+    {
+        SonidosPersonaje.ReproducirVoz(IndicePersonaje, false, transform.position, 0.95f, variante);
+    }
+
+    private void EmitirVozDanoConCooldown(float volumen)
+    {
+        if (Time.time < proximaVozDano) return;
+        proximaVozDano = Time.time + 1.4f;
+        SonidosPersonaje.ReproducirVoz(IndicePersonaje, true, transform.position, volumen);
+    }
+
     // true si la capsula del jugador, puesta en la posicion p, choca con algo solido
     private bool CapsulaOcupada(Vector3 p)
     {
@@ -1085,6 +1446,7 @@ public class Personaje : NetworkBehaviour
         var nt = GetComponent<Unity.Netcode.Components.NetworkTransform>();
         if (nt != null) nt.Teleport(destino, transform.rotation, transform.localScale);
         velocidadCaida = Vector3.zero;
+        velocidadHorizontalX = 0f;
         controlador.enabled = true;
     }
 
@@ -1095,5 +1457,6 @@ public class Personaje : NetworkBehaviour
         revisarSpawnPendiente = true;
         revisarSpawnEn = -1f;
         velocidadCaida = Vector3.zero; //Si iba cayendo en el mapa anterior, que no llegue con esa velocidad al nuevo
+        velocidadHorizontalX = 0f;
     }
 }

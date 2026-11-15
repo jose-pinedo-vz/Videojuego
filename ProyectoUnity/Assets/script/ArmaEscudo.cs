@@ -92,8 +92,11 @@ public class ArmaEscudo : Arma
             if (enemigo == null || enemigo == jugadorQueLaEquipo || empujados.Contains(enemigo)) continue;
 
             float deltaX = (enemigo.transform.position.x - posJugador.x) * dirX;
-            if (deltaX >= -0.3f && deltaX <= alcanceGolpe + 0.4f)
+            if (deltaX >= -0.15f && deltaX <= alcanceGolpe + 0.25f)
             {
+                if (jugadorQueLaEquipo.HayMuroEntrePuntos(posJugador + Vector3.up * 0.9f, enemigo.transform.position + Vector3.up * 0.9f))
+                    continue;
+
                 empujados.Add(enemigo);
                 Vector3 impulso = new Vector3(dirX * fuerzaEmpujeHorizontal, fuerzaEmpujeVertical, 0f);
                 enemigo.RecibirEmpujeEscudo(impulso);
@@ -110,6 +113,16 @@ public class ArmaEscudo : Arma
         {
             jugadorQueLaEquipo.MostrarDisparoRpc(inicioTrazo, finTrazo);
         }
+    }
+
+    /// <summary>
+    /// Determina si el escudo cubre el frente del portador ante un ataque cuerpo a cuerpo o machete lanzado.
+    /// </summary>
+    public bool BloqueaAtaqueFrontal(float dirAtaqueX)
+    {
+        if (enCaja || jugadorQueLaEquipo == null) return false;
+        float dirMirada = jugadorQueLaEquipo.DireccionHorizontal;
+        return (dirAtaqueX * dirMirada) < 0.15f;
     }
 
     /// <summary>

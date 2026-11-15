@@ -109,6 +109,16 @@ public class EfectosDisparo : MonoBehaviour
         sacudida = Mathf.Max(sacudida, fuerza);
     }
 
+    public static void MostrarTextoComic(string texto, Vector3 pos, Color color)
+    {
+        Obtener().PalabraComic(pos, texto, color);
+    }
+
+    public static void MostrarDestelloImpacto(Vector3 pos, Color color, float tamano = 0.25f)
+    {
+        Obtener().NuevoDestello(pos, color, tamano, 0.1f);
+    }
+
     // ---------------------------------------------------------------- creacion
 
     private void Awake()

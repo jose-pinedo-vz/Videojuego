@@ -13,7 +13,7 @@ using UnityEngine;
 public class ArmaMachete : Arma
 {
     [Header("Configuracion de Machete")]
-    [SerializeField] private float alturaAreaVisual = 2.35f;
+    [SerializeField] private float alturaAreaVisual = 1.65f;
     [SerializeField] private float velocidadLanzamiento = 19f;
     [SerializeField] private float distanciaMaximaLanzamiento = 16f;
     [SerializeField] private float tiempoMantenerParaLanzar = 0.38f;
@@ -30,8 +30,8 @@ public class ArmaMachete : Arma
 
     protected override void Start()
     {
-        if (Cadencia <= 0f) Cadencia = 3.6f;
-        if (Alcance <= 0f || Alcance > 5f) Alcance = 2.45f;
+        if (Cadencia <= 0f) Cadencia = 3.2f;
+        if (Alcance <= 0f || Alcance > 1.5f) Alcance = 1.25f;
         Dispersion = 0f;
         municionMaxima = 0; // Cuerpo a cuerpo sin recarga por balas
         municionActual = 1;
@@ -99,11 +99,12 @@ public class ArmaMachete : Arma
         float dirX = jugadorQueLaEquipo.DireccionHorizontal;
         Vector3 posJugador = jugadorQueLaEquipo.transform.position;
         Vector3 centroVisualJugador = posJugador + new Vector3(0f, 0.95f, 0f);
+        float rangoReal = Mathf.Clamp(Alcance, 0.85f, 1.35f);
 
-        // Detectar enemigos en TODA el area visual frontal hacia donde apunta el personaje
+        // Detectar enemigos en el rango cuerpo a cuerpo real frontal, validando muros y bloqueo de escudo
         HashSet<Personaje> golpeados = new HashSet<Personaje>();
-        Vector3 centroCaja = centroVisualJugador + new Vector3(dirX * (Alcance * 0.5f), 0f, 0f);
-        Vector3 mitadCaja = new Vector3(Alcance * 0.55f, alturaAreaVisual * 0.5f, 1.4f);
+        Vector3 centroCaja = centroVisualJugador + new Vector3(dirX * (rangoReal * 0.5f), 0f, 0f);
+        Vector3 mitadCaja = new Vector3(rangoReal * 0.55f, alturaAreaVisual * 0.5f, 0.95f);
 
         Collider[] colisiones = Physics.OverlapBox(centroCaja, mitadCaja, Quaternion.identity, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         foreach (Collider col in colisiones)
@@ -112,19 +113,38 @@ public class ArmaMachete : Arma
             Personaje enemigo = col.GetComponentInParent<Personaje>();
             if (enemigo == null || enemigo == jugadorQueLaEquipo || golpeados.Contains(enemigo)) continue;
 
-            // Verificar que este frente al personaje (en su direccion de mirada)
+            // Verificar que este estrictamente frente al personaje y a su misma altura
             float deltaX = (enemigo.transform.position.x - posJugador.x) * dirX;
-            if (deltaX >= -0.25f && deltaX <= Alcance + 0.35f)
+            float deltaY = Mathf.Abs(enemigo.transform.position.y - posJugador.y);
+            if (deltaX >= -0.05f && deltaX <= rangoReal + 0.12f && deltaY <= 1.25f)
             {
-                golpeados.Add(enemigo);
                 Vector3 puntoImpacto = enemigo.transform.position + new Vector3(0f, 0.9f, 0f);
+
+                // 1. No atravesar paredes ni coberturas solidas
+                if (jugadorQueLaEquipo.HayMuroEntrePuntos(centroVisualJugador, puntoImpacto))
+                {
+                    continue;
+                }
+
+                golpeados.Add(enemigo);
+
+                // 2. Si el enemigo tiene el Escudo Troyano cubriendo el frente, rebota con ¡CLANG!
+                if (enemigo.armaEquipada is ArmaEscudo escudo && escudo.BloqueaAtaqueFrontal(dirX))
+                {
+                    Sonidos.Reproducir("clank", puntoImpacto, 0.95f, 1.25f);
+                    EfectosDisparo.MostrarTextoComic("¡CLANG!", puntoImpacto + Vector3.up * 0.25f, new Color(0.95f, 0.85f, 0.45f));
+                    EfectosDisparo.MostrarDestelloImpacto(puntoImpacto, new Color(1f, 0.9f, 0.5f), 0.3f);
+                    jugadorQueLaEquipo.RecibirRetrocesoDisparo(3.2f, 0f);
+                    continue;
+                }
+
                 enemigo.RecibirImpactoDeDisparo(jugadorQueLaEquipo, puntoImpacto, new Vector3(dirX, 0f, 0f));
             }
         }
 
         // Referencia de arco para sonido/texto comic y animacion en abanico (sin trazo recto de bala)
-        Vector3 inicioArco = centroVisualJugador + new Vector3(dirX * 0.45f, 0.55f, 0f);
-        Vector3 finArco = centroVisualJugador + new Vector3(dirX * (Alcance * 0.88f), -0.45f, 0f);
+        Vector3 inicioArco = centroVisualJugador + new Vector3(dirX * 0.42f, 0.52f, 0f);
+        Vector3 finArco = centroVisualJugador + new Vector3(dirX * (rangoReal * 0.88f), -0.42f, 0f);
         UltimoInicioTrazo = inicioArco;
         UltimoFinTrazo = finArco;
         IniciarBarridoAbanico(dirX);
@@ -257,11 +277,13 @@ public class ArmaMachete : Arma
     {
         enVuelo = true;
         transform.position = origen;
-        Vector3 velocidad = new Vector3(dirX * velocidadLanzamiento, 1.25f, 0f);
+        float multLanzamiento = lanzador != null ? lanzador.MultiplicadorLanzamiento : 1f;
+        Vector3 velocidad = new Vector3(dirX * velocidadLanzamiento * multLanzamiento, 1.35f * multLanzamiento, 0f);
+        float distMax = distanciaMaximaLanzamiento * multLanzamiento;
         float distanciaRecorrida = 0f;
         Vector3 posFinal = origen;
 
-        while (distanciaRecorrida < distanciaMaximaLanzamiento)
+        while (distanciaRecorrida < distMax)
         {
             float dt = Time.deltaTime;
             velocidad.y -= 4.8f * dt; // Ligera caida balistica
@@ -288,6 +310,15 @@ public class ArmaMachete : Arma
                     if (p != null)
                     {
                         if (p == lanzador) continue;
+
+                        if (p.armaEquipada is ArmaEscudo escudo && escudo.BloqueaAtaqueFrontal(dirX))
+                        {
+                            Sonidos.Reproducir("clank", hit.point, 0.95f, 1.25f);
+                            EfectosDisparo.MostrarTextoComic("¡CLANG!", hit.point + Vector3.up * 0.25f, new Color(0.95f, 0.85f, 0.45f));
+                            posFinal = hit.point - new Vector3(dirX * 0.3f, 0f, 0f);
+                            choco = true;
+                            break;
+                        }
 
                         if (aplicarDano)
                         {

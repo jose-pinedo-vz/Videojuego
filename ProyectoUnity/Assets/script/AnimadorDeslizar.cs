@@ -17,15 +17,18 @@ public class AnimadorDeslizar : MonoBehaviour
     [SerializeField] private float rodillasAtras = 10f;     // las pantorrillas se doblan un poco mas
 
     [Header("Transicion")]
-    [SerializeField] private float velocidadEntrar = 12f;
-    [SerializeField] private float velocidadSalir = 5f;     // mas lento: el gato se levanta suave
+    [SerializeField] private float velocidadEntrar = 16f;
+    [SerializeField] private float velocidadSalir = 9f;     // regreso rapido a correr o reposo
 
     private static readonly int ParamDeslizando = Animator.StringToHash("estaDeslizando");
+    private static readonly int ParamAgachado = Animator.StringToHash("estaAgachado");
 
     private Animator animator;
     private bool tieneParametro;
+    private bool tieneParametroAgachado;
     private Transform caderas, columna, pecho, cabeza, musloIzq, musloDer, rodillaIzq, rodillaDer;
     private float peso; // 0 normal, 1 deslizando por completo
+    private float pesoAgachado; // 0 erguido, 1 agachado
     private ParticleSystem polvo;
 
     private void Awake()
@@ -41,11 +44,13 @@ public class AnimadorDeslizar : MonoBehaviour
         if (animator == null) { enabled = false; return; }
 
         tieneParametro = false;
+        tieneParametroAgachado = false;
         if (animator.runtimeAnimatorController != null)
         {
             foreach (AnimatorControllerParameter p in animator.parameters)
             {
                 if (p.nameHash == ParamDeslizando) tieneParametro = true;
+                else if (p.nameHash == ParamAgachado) tieneParametroAgachado = true;
             }
         }
 
@@ -88,9 +93,12 @@ public class AnimadorDeslizar : MonoBehaviour
     private void LateUpdate()
     {
         if (!tieneParametro || caderas == null) return;
+        if (animator == null || !animator.isActiveAndEnabled || animator.runtimeAnimatorController == null) return;
 
         bool deslizando = animator.GetBool(ParamDeslizando);
+        bool agachado = !deslizando && tieneParametroAgachado && animator.GetBool(ParamAgachado);
         peso = Mathf.MoveTowards(peso, deslizando ? 1f : 0f, (deslizando ? velocidadEntrar : velocidadSalir) * Time.deltaTime);
+        pesoAgachado = Mathf.MoveTowards(pesoAgachado, agachado ? 1f : 0f, 12f * Time.deltaTime);
 
         if (polvo != null)
         {
@@ -98,20 +106,32 @@ public class AnimadorDeslizar : MonoBehaviour
             emision.rateOverTime = deslizando ? 45f : 0f;
         }
 
-        if (peso <= 0.001f) return;
-        float s = Mathf.SmoothStep(0f, 1f, peso);
+        if (peso <= 0.001f && pesoAgachado <= 0.001f) return;
 
         // el eje lateral gira con el personaje, asi "adelante" es siempre hacia donde mira
         Vector3 eje = transform.right;
 
-        caderas.position -= Vector3.up * bajarCaderas * s;
-        Girar(columna, inclinarColumna * s, eje);
-        Girar(pecho, inclinarPecho * s, eje);
-        Girar(cabeza, levantarCabeza * s, eje);
-        Girar(musloIzq, piernasAtras * s, eje);
-        Girar(musloDer, piernasAtras * s, eje);
-        Girar(rodillaIzq, rodillasAtras * s, eje);
-        Girar(rodillaDer, rodillasAtras * s, eje);
+        if (peso > 0.001f)
+        {
+            float s = Mathf.SmoothStep(0f, 1f, peso);
+            caderas.position -= Vector3.up * bajarCaderas * s;
+            Girar(columna, inclinarColumna * s, eje);
+            Girar(pecho, inclinarPecho * s, eje);
+            Girar(cabeza, levantarCabeza * s, eje);
+            Girar(musloIzq, piernasAtras * s, eje);
+            Girar(musloDer, piernasAtras * s, eje);
+            Girar(rodillaIzq, rodillasAtras * s, eje);
+            Girar(rodillaDer, rodillasAtras * s, eje);
+        }
+
+        if (pesoAgachado > 0.001f)
+        {
+            float c = Mathf.SmoothStep(0f, 1f, pesoAgachado);
+            caderas.position -= Vector3.up * (0.065f * c);
+            Girar(columna, 10f * c, eje);
+            Girar(pecho, 6f * c, eje);
+            Girar(cabeza, -12f * c, eje);
+        }
     }
 
     private static void Girar(Transform hueso, float grados, Vector3 eje)

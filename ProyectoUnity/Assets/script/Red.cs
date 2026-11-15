@@ -9,9 +9,36 @@ using TMPro;
 public class Red : NetworkBehaviour
 {
     private static readonly HashSet<int> personajesUsadosOffline = new HashSet<int>();
+    private static readonly List<Red> instanciasActivas = new List<Red>();
 
     private bool jugadorVisible = true;
     private int indicePersonajeAplicado = -1;
+    private MeshRenderer rendererNombreCache;
+    private bool ocultoTemporalmentePorEstudio;
+
+    private void OnEnable()
+    {
+        if (!instanciasActivas.Contains(this)) instanciasActivas.Add(this);
+    }
+
+    private void OnDisable()
+    {
+        instanciasActivas.Remove(this);
+    }
+
+    /// <summary>
+    /// Oculta o restaura temporalmente solo los MeshRenderer activos de nombres 3D
+    /// alrededor del render de la camara de grabacion sin afectar a Main Camera.
+    /// </summary>
+    public static void EstablecerOcultamientoTemporalPorRender(bool ocultar)
+    {
+        for (int i = instanciasActivas.Count - 1; i >= 0; i--)
+        {
+            Red r = instanciasActivas[i];
+            if (r == null) { instanciasActivas.RemoveAt(i); continue; }
+            r.AplicarOcultamientoTemporalEtiqueta(ocultar);
+        }
+    }
 
     public void MostrarJugador(bool visible)
     {
@@ -225,10 +252,31 @@ public class Red : NetworkBehaviour
 
     private void LateUpdate()
     {
-        // Billboard: el texto siempre mira hacia la cámara local sin espejearse al girar el personaje
+        // Billboard: el texto siempre mira hacia la camara del jugador (Camera.main)
         if (textoNombre != null && Camera.main != null)
         {
             textoNombre.transform.rotation = Camera.main.transform.rotation;
+        }
+    }
+
+    private void AplicarOcultamientoTemporalEtiqueta(bool ocultar)
+    {
+        if (textoNombre == null) return;
+        if (rendererNombreCache == null) rendererNombreCache = textoNombre.GetComponent<MeshRenderer>();
+        if (rendererNombreCache == null) return;
+
+        if (ocultar)
+        {
+            if (rendererNombreCache.enabled)
+            {
+                rendererNombreCache.enabled = false;
+                ocultoTemporalmentePorEstudio = true;
+            }
+        }
+        else if (ocultoTemporalmentePorEstudio)
+        {
+            rendererNombreCache.enabled = true;
+            ocultoTemporalmentePorEstudio = false;
         }
     }
 

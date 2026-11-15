@@ -11,12 +11,83 @@ using System.Threading.Tasks;
 
 public class NetWork:MonoBehaviour
 {
+    // Hashes de GameManager en Juego.unity y SetGrabacion.unity (por si SetGrabacion se re-guarda en Editor)
+    private const uint HashGameManagerJuego = 519549695u;
+    private const uint HashGameManagerSetGrabacion = 3978322295u;
+    private static readonly ManejadorGameManagerEscena ManejadorGameManager = new ManejadorGameManagerEscena();
+
+    private void Awake()
+    {
+        ConfigurarRedMultiEscena();
+    }
+
+    private void Start()
+    {
+        ConfigurarRedMultiEscena();
+    }
+
+    /// <summary>
+    /// Desactiva la sincronizacion forzada de escenas de Netcode y enlaza el GameManager
+    /// local de la escena activa para poder jugar entre Juego.unity y SetGrabacion.unity.
+    /// </summary>
+    public static void ConfigurarRedMultiEscena()
+    {
+        NetworkManager nm = NetworkManager.Singleton;
+        if (nm == null)
+        {
+            nm = FindAnyObjectByType<NetworkManager>(FindObjectsInactive.Include);
+        }
+        if (nm == null) return;
+
+        if (!nm.IsListening && nm.NetworkConfig != null)
+        {
+            nm.NetworkConfig.EnableSceneManagement = false;
+        }
+
+        if (nm.PrefabHandler == null) return;
+
+        nm.PrefabHandler.AddHandler(HashGameManagerJuego, ManejadorGameManager);
+        nm.PrefabHandler.AddHandler(HashGameManagerSetGrabacion, ManejadorGameManager);
+
+        GameManager gmLocal = FindAnyObjectByType<GameManager>(FindObjectsInactive.Include);
+        if (gmLocal != null && gmLocal.TryGetComponent(out NetworkObject gmNetObj) && gmNetObj.PrefabIdHash != 0)
+        {
+            nm.PrefabHandler.AddHandler(gmNetObj.PrefabIdHash, ManejadorGameManager);
+        }
+    }
+
+    private sealed class ManejadorGameManagerEscena : INetworkPrefabInstanceHandler
+    {
+        public NetworkObject Instantiate(ulong ownerClientId, Vector3 position, Quaternion rotation)
+        {
+            GameManager gm = UnityEngine.Object.FindAnyObjectByType<GameManager>(FindObjectsInactive.Include);
+            if (gm == null)
+            {
+                Debug.LogError("[NetWork] No se encontro GameManager en la escena activa.");
+                return null;
+            }
+
+            if (!gm.gameObject.activeSelf)
+            {
+                gm.gameObject.SetActive(true);
+            }
+
+            return gm.GetComponent<NetworkObject>();
+        }
+
+        public void Destroy(NetworkObject networkObject)
+        {
+            // Se conserva el GameManager local de la escena porque guarda referencias de UI y mapa.
+        }
+    }
+
     public static void iniciarHost()
     {
         // crea el host de la secion, y se encarga de iniciar la secion de red
 
         if(NetworkManager.Singleton != null)
         {
+            ConfigurarRedMultiEscena();
             NetworkManager.Singleton.StartHost();
             Debug.Log("Secion iniciada");
         }
@@ -34,6 +105,8 @@ public class NetWork:MonoBehaviour
     {
         try
         {
+            ConfigurarRedMultiEscena();
+
             // se asigna una sala con los maximos jugadores 
             // el numero que pide Relay son las conexiones de clientes, sin contar al host
             Allocation asignacion=await RelayService.Instance.CreateAllocationAsync(Mathf.Max(1, maxPlayers - 1)); 
@@ -44,6 +117,7 @@ public class NetWork:MonoBehaviour
                 asignacion.RelayServer.IpV4,(ushort)asignacion.RelayServer.Port,asignacion.AllocationIdBytes,asignacion.Key,asignacion.ConnectionData
             );
 
+            ConfigurarRedMultiEscena();
             NetworkManager.Singleton.StartHost(); // se incia el host
             Debug.Log($"Secion iniciada, el codigo de la sala es: {codigoSala}");
             return codigoSala;
@@ -61,6 +135,8 @@ public class NetWork:MonoBehaviour
     {
         try
         {
+            ConfigurarRedMultiEscena();
+
             // asignacin del cliente usando el codigo
             JoinAllocation asignacion=await RelayService.Instance.JoinAllocationAsync(codigoSala);
 
@@ -68,6 +144,7 @@ public class NetWork:MonoBehaviour
                 asignacion.RelayServer.IpV4,(ushort)asignacion.RelayServer.Port,asignacion.AllocationIdBytes,asignacion.Key,asignacion.ConnectionData,asignacion.HostConnectionData
             );
 
+            ConfigurarRedMultiEscena();
             return NetworkManager.Singleton.StartClient(); // se incia el cliente
         }
         catch(Exception e)

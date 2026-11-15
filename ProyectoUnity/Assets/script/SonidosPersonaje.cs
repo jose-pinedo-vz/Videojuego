@@ -13,7 +13,10 @@ public class SonidosPersonaje : MonoBehaviour
     private const float VelocidadSalto = 4f;   // m/s hacia arriba para contar como salto (subir una rampa es menos)
     private const float TiempoCaida = 0.15f;   // en el aire tanto tiempo cuenta como caida aunque no se haya saltado
 
+    private static readonly string[] PrefijosAnimales = { "gato", "perro", "raton", "cabra" };
+
     private Animator animator;
+    private Personaje personaje;
     private bool tieneParametros;
     private bool enAire;
     private bool deslizandoAntes;
@@ -21,9 +24,47 @@ public class SonidosPersonaje : MonoBehaviour
     private float proximoPaso;
     private float ultimaY;
     private int alternar;
+    private float proximaVozSalto;
+
+    /// <summary>
+    /// Resuelve el prefijo del archivo de voz para el indice de personaje dado (0=gato, 1=perro, 2=raton, 3=cabra).
+    /// </summary>
+    public static string PrefijoVoz(int indicePersonaje)
+    {
+        if (indicePersonaje < 0 || indicePersonaje >= PrefijosAnimales.Length)
+            return PrefijosAnimales[0];
+        return PrefijosAnimales[indicePersonaje];
+    }
+
+    /// <summary>
+    /// Obtiene el nombre del clip de voz animal segun variante (0=aleatorio 1/2, 1/2=especifica) o daño.
+    /// </summary>
+    public static string ClipVoz(int indicePersonaje, bool dano, int variante = 0)
+    {
+        string prefijo = PrefijoVoz(indicePersonaje);
+        if (dano) return "voz_" + prefijo + "_dano";
+        int idx = variante == 1 || variante == 2 ? variante : Random.Range(1, 3);
+        return "voz_" + prefijo + "_" + idx;
+    }
+
+    public static void ReproducirVoz(int indicePersonaje, bool dano, Vector3 posicion, float volumen = 0.9f, int variante = 0)
+    {
+        string clip = ClipVoz(indicePersonaje, dano, variante);
+        if (Sonidos.Existe(clip))
+            Sonidos.Reproducir(clip, posicion, volumen);
+    }
+
+    public static void ReproducirVozLocal(int indicePersonaje, bool dano, float volumen = 0.85f, int variante = 0)
+    {
+        string clip = ClipVoz(indicePersonaje, dano, variante);
+        if (Sonidos.Existe(clip))
+            Sonidos.Reproducir(clip, volumen);
+    }
 
     private void Awake()
     {
+        personaje = GetComponent<Personaje>();
+        if (personaje == null) personaje = GetComponentInParent<Personaje>();
         animator = GetComponent<Animator>();
         if (animator == null) animator = GetComponentInChildren<Animator>();
         if (animator == null) { enabled = false; return; }
@@ -39,7 +80,7 @@ public class SonidosPersonaje : MonoBehaviour
 
     private void Update()
     {
-        if (!tieneParametros) return;
+        if (!tieneParametros || animator == null || !animator.isActiveAndEnabled || animator.runtimeAnimatorController == null) return;
 
         float dt = Mathf.Max(Time.deltaTime, 0.0001f);
         float velocidadY = (transform.position.y - ultimaY) / dt;
@@ -57,7 +98,16 @@ public class SonidosPersonaje : MonoBehaviour
             if (!enAire && (velocidadY > VelocidadSalto || tiempoEnAire > TiempoCaida))
             {
                 enAire = true;
-                if (velocidadY > VelocidadSalto) Sonidos.Reproducir("salto", pos, 0.7f);
+                if (velocidadY > VelocidadSalto)
+                {
+                    Sonidos.Reproducir("salto", pos, 0.7f);
+                    if (Time.time >= proximaVozSalto && Random.value < 0.25f)
+                    {
+                        proximaVozSalto = Time.time + 5.5f;
+                        int idx = personaje != null ? personaje.IndicePersonaje : 0;
+                        ReproducirVoz(idx, false, pos, 0.55f);
+                    }
+                }
             }
         }
         else

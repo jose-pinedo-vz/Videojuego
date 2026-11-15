@@ -24,6 +24,7 @@ public class AnimadorArma : MonoBehaviour
     private float inclinacionActual;   // grados que se echa hacia atras al disparar contra una pared
     private int capaArma = -1;
     private float pesoCapa;
+    private bool tieneConArma;
 
     private Vector3 manoOriginal;      // posicion de Mano en el prefab, donde cada arma ya esta ajustada
     // donde queda el arma respecto al hueso de la mano (espacio del jugador): bajar para centrarla en el pecho y
@@ -88,9 +89,17 @@ public class AnimadorArma : MonoBehaviour
         if (animator == null) animator = GetComponentInChildren<Animator>();
 
         huesoMano = null;
+        tieneConArma = false;
         if (animator != null)
         {
             capaArma = animator.GetLayerIndex(NombreCapa);
+            if (animator.runtimeAnimatorController != null)
+            {
+                foreach (AnimatorControllerParameter p in animator.parameters)
+                {
+                    if (p.name == "conArma") { tieneConArma = true; break; }
+                }
+            }
             if (animator.isHuman)
                 huesoMano = animator.GetBoneTransform(HumanBodyBones.RightHand);
         }
@@ -115,13 +124,14 @@ public class AnimadorArma : MonoBehaviour
 
     private void Update()
     {
-        if (animator == null || capaArma < 0) return;
+        if (animator == null || capaArma < 0 || !animator.isActiveAndEnabled || animator.runtimeAnimatorController == null) return;
 
         Arma arma = personaje != null ? personaje.armaEquipada : null;
         bool apuntando = arma != null && !arma.EnCaja;
 
         pesoCapa = Mathf.MoveTowards(pesoCapa, apuntando ? 1f : 0f, VelocidadCapa * Time.deltaTime);
         animator.SetLayerWeight(capaArma, pesoCapa);
+        if (tieneConArma) animator.SetBool("conArma", apuntando);
 
         SonidosDeArma(arma);
 

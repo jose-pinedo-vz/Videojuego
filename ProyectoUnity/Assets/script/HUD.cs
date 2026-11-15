@@ -11,6 +11,33 @@ public class HUD : MonoBehaviour
     [SerializeField] private TextMeshProUGUI txt_marcador;
 
     private Personaje jugadorLocal;
+    public Personaje JugadorLocal => jugadorLocal;
+
+    // Estado global para Hitmarker y Anuncio de Bajas en el HUD
+    private static float tiempoFinHitmarker;
+    private static bool ultimoHitmarkerMortal;
+    private static float tiempoFinAnuncioBaja;
+    private static string nombreUltimaBaja = "";
+    public const float DURACION_HITMARKER = 0.18f;
+    public const float DURACION_ANUNCIO_BAJA = 2.6f;
+
+    public static float TiempoRestanteHitmarker => Mathf.Max(0f, tiempoFinHitmarker - Time.unscaledTime);
+    public static bool HitmarkerEsMortal => ultimoHitmarkerMortal;
+    public static float TiempoRestanteAnuncioBaja => Mathf.Max(0f, tiempoFinAnuncioBaja - Time.unscaledTime);
+    public static string UltimaVictimaBaja => nombreUltimaBaja;
+
+    public static void RegistrarHitmarker(bool mortal = true)
+    {
+        tiempoFinHitmarker = Time.unscaledTime + DURACION_HITMARKER;
+        ultimoHitmarkerMortal = mortal;
+    }
+
+    public static void RegistrarBajaLocal(string nombreVictima)
+    {
+        RegistrarHitmarker(true);
+        nombreUltimaBaja = string.IsNullOrWhiteSpace(nombreVictima) ? "Rival" : nombreVictima.Trim();
+        tiempoFinAnuncioBaja = Time.unscaledTime + DURACION_ANUNCIO_BAJA;
+    }
 
     // Prende o apaga los textos del HUD, lo llama inicio al empezar y terminar la partida
     public void Mostrar(bool visible)
@@ -18,6 +45,11 @@ public class HUD : MonoBehaviour
         if (txt_municion != null) txt_municion.gameObject.SetActive(visible);
         if (txt_arma != null) txt_arma.gameObject.SetActive(visible);
         if (txt_marcador != null) txt_marcador.gameObject.SetActive(visible);
+        if (!visible)
+        {
+            tiempoFinHitmarker = 0f;
+            tiempoFinAnuncioBaja = 0f;
+        }
     }
 
     private void Update()

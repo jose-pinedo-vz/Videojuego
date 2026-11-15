@@ -86,6 +86,7 @@ public class inicio : MonoBehaviour
 
     public void mostrarPanelFin()
     {
+        Grabacion.DirectorSetGrabacion.NotificarFinPartida();
 
         // terminar partid
         mostrarMapa(-1);
@@ -140,6 +141,7 @@ public class inicio : MonoBehaviour
 
     private System.Collections.IEnumerator reiniciarEscena()
     {
+        Grabacion.DirectorSetGrabacion.NotificarCambioEscena();
         NetworkManager nm = NetworkManager.Singleton;
         if (nm != null && nm.IsListening) nm.Shutdown();
         while (nm != null && nm.ShutdownInProgress) yield return null;
@@ -205,6 +207,8 @@ public class inicio : MonoBehaviour
         {
             jugador.MostrarJugador(true);
         }
+
+        Grabacion.DirectorSetGrabacion.NotificarInicioPartida();
     }
 
     // el HUD esta en el mismo Canvas que este script

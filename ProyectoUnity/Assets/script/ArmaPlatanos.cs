@@ -10,10 +10,10 @@ using UnityEngine;
 public class ArmaPlatanos : Arma
 {
     [Header("Configuracion de Penca de Platano")]
-    [SerializeField] private float distanciaDetras = 0.25f;    // que tan atras del personaje aparece
-    [SerializeField] private float alturaSuelta = 0.45f;       // a que altura sale (cae al piso)
-    [SerializeField] private float velocidadHaciaAtras = 0.4f; // apenas se desliza hacia atras al caer
-    [SerializeField] private float velocidadLanzamientoY = 0f; // sin impulso hacia arriba: solo cae
+    [SerializeField] private float distanciaFrente = 0.55f;       // sale al frente del personaje (como los barrenos)
+    [SerializeField] private float alturaLanzamiento = 1.05f;     // altura de la mano/pecho al arrojar
+    [SerializeField] private float velocidadLanzamientoX = 8.4f;  // impulso horizontal hacia adelante
+    [SerializeField] private float velocidadLanzamientoY = 4.6f;  // arco parabolico hacia arriba
     [SerializeField] private float duracionResbalonSegundos = 3.5f;
 
     protected override void Start()
@@ -86,12 +86,17 @@ public class ArmaPlatanos : Arma
         Personaje lanzador = jugadorQueLaEquipo;
         lanzador.CancelarInmunidadPorAtaque();
         float dirX = lanzador.DireccionHorizontal;
-        // la cascara cae al piso pegada al personaje (algo detras, contra la direccion en que mira)
-        Vector3 origen = lanzador.transform.position + new Vector3(-dirX * distanciaDetras, alturaSuelta, 0f);
-        Vector3 velocidad = new Vector3(-dirX * velocidadHaciaAtras, velocidadLanzamientoY, 0f);
+        float multLanzamiento = lanzador.MultiplicadorLanzamiento; // Pasiva de Kaiser: lanza 40% mas lejos
+
+        // Arroja la cascara hacia adelante en parabola lejos del personaje (igual que los barrenos)
+        Vector3 origen = lanzador.transform.position + new Vector3(dirX * distanciaFrente, alturaLanzamiento, 0f);
+        Vector3 velocidad = new Vector3(
+            dirX * Mathf.Max(6.5f, velocidadLanzamientoX) * multLanzamiento,
+            Mathf.Max(3.8f, velocidadLanzamientoY) * multLanzamiento,
+            0f);
 
         UltimoInicioTrazo = origen;
-        UltimoFinTrazo = origen + velocidad.normalized * 0.8f;
+        UltimoFinTrazo = origen + velocidad.normalized * 1.1f;
 
         if (lanzador.IsSpawned && NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
         {

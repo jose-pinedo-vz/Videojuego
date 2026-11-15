@@ -52,15 +52,41 @@ public static partial class EstiloUI
 
         // ---- Inicio: nombre y botones de jugar / salir ----
         Transform p = canvas.Find("Inicio");
-        EstiloPanel(p, new Vector2(640, 700));
-        EstiloTitulo(Texto(p, "Text (TMP)"), new Vector2(0, 270), new Vector2(560, 70), 44);
-        EstiloInput(Input(p, "InpuntNombre"), new Vector2(0, 165), new Vector2(420, 60));
-        EstiloBoton(Boton(p, "btn_iniciar"), true, new Vector2(0, 55), new Vector2(420, 70));
-        EstiloBoton(Boton(p, "btn_salir"), false, new Vector2(0, -225), new Vector2(420, 70));
+        bool mostrarAccesoSet = p != null
+            && string.Equals(menu.gameObject.scene.name, "Juego", System.StringComparison.OrdinalIgnoreCase)
+            && Application.CanStreamedLevelBeLoaded("SetGrabacion");
+
+        EstiloPanel(p, new Vector2(640, mostrarAccesoSet ? 785 : 700));
+        EstiloTitulo(Texto(p, "Text (TMP)"), new Vector2(0, mostrarAccesoSet ? 310 : 270), new Vector2(560, 70), 44);
+        EstiloInput(Input(p, "InpuntNombre"), new Vector2(0, mostrarAccesoSet ? 205 : 165), new Vector2(420, 60));
+        EstiloBoton(Boton(p, "btn_iniciar"), true, new Vector2(0, mostrarAccesoSet ? 95 : 55), new Vector2(420, 70));
+        EstiloBoton(Boton(p, "btn_salir"), false, new Vector2(0, mostrarAccesoSet ? -295 : -225), new Vector2(420, 70));
         // entre Jugar y Salir: ajustes de volumen y de teclado (se crean por codigo)
         Button refBoton = Boton(p, "btn_iniciar");
         TMP_Text refTexto = refBoton != null ? refBoton.GetComponentInChildren<TMP_Text>(true) : null;
-        if (p != null) CrearMenuAjustes(canvas, p, menu, refTexto != null ? refTexto.font : null);
+        if (p != null)
+        {
+            CrearMenuAjustes(canvas, p, menu, refTexto != null ? refTexto.font : null);
+            if (mostrarAccesoSet)
+            {
+                RectTransform rtVol = p.Find("btn_ajustesVolumen") as RectTransform;
+                RectTransform rtTec = p.Find("btn_ajustesTeclado") as RectTransform;
+                if (rtVol != null) rtVol.anchoredPosition = new Vector2(0, 0);
+                if (rtTec != null) rtTec.anchoredPosition = new Vector2(0, -85);
+
+                if (p.Find("btn_setGrabacion") == null)
+                {
+                    Button bSet = CrearBotonSimple(p, "btn_setGrabacion", refTexto != null ? refTexto.font : null, "Set de Grabación");
+                    EstiloBoton(bSet, false, new Vector2(0, -185), new Vector2(420, 62));
+                    bSet.onClick.AddListener(() =>
+                    {
+                        var nm = Unity.Netcode.NetworkManager.Singleton;
+                        if (nm != null && nm.IsListening) nm.Shutdown();
+                        UnityEngine.SceneManagement.SceneManager.LoadScene("SetGrabacion");
+                    });
+                }
+            }
+        }
 
         // ---- Seleccion: crear sala o unirse ----
         p = canvas.Find("Seleccion");
@@ -392,27 +418,33 @@ public static partial class EstiloUI
         }
 
         HUD hud = canvas.GetComponent<HUD>();
-        if (hud != null) EstilizarArma(canvas, hud, fuente, menu);
+        if (hud != null)
+        {
+            EstilizarArma(canvas, hud, fuente, menu);
+            EstilizarPersonajeYPasiva(canvas, hud, fuente, menu);
+            EstilizarReticulaYBajas(canvas, hud, fuente, menu);
+        }
 
         // ---- ayuda de controles ----
         if (canvas.Find("Controles") == null && menu.txt_tiempo != null)
         {
             TextMeshProUGUI txt = CrearTextoHUD(canvas, "Controles", fuente, menu.txt_tiempo.gameObject);
-            EstiloTexto(txt, Vector2.zero, new Vector2(1040, 36), 20, false, TextoTenue, TextAlignmentOptions.Center);
+            EstiloTexto(txt, Vector2.zero, new Vector2(1040, 34), 18, false, TextoTenue, TextAlignmentOptions.Center);
             txt.richText = true;
             string a = "<color=#FF9F1C><b>";
             string b = "</b></color> ";
-            txt.text = a + "A/D" + b + "mover     " + a + "ESPACIO" + b + "saltar     " + a + "SHIFT" + b + "deslizar     "
-                     + a + "C" + b + "recoger/soltar     " + a + "V" + b + "disparar     " + a + "R" + b + "recargar     " + a + "M" + b + "música";
-            Anclar(txt.rectTransform, new Vector2(0.5f, 0f), new Vector2(0, 28), new Vector2(1040, 36));
-            RectTransform fondo = CrearFondoHUD(txt.rectTransform, new Vector2(24, 4), menu.txt_tiempo.gameObject);
-            fondo.GetComponentInChildren<Image>().color = new Color(0.04f, 0.05f, 0.08f, 0.55f);
+            txt.text = a + "A/D" + b + "mover    " + a + "ESPACIO" + b + "saltar    " + a + "SHIFT" + b + "deslizar    "
+                     + a + "C" + b + "recoger    " + a + "V" + b + "atacar    " + a + "F" + b + "secundaria    " + a + "R" + b + "recargar    "
+                     + a + "G" + b + "voz    " + a + "M" + b + "música";
+            Anclar(txt.rectTransform, new Vector2(0.5f, 0f), new Vector2(0, 24), new Vector2(1040, 34));
+            RectTransform fondo = CrearFondoHUD(txt.rectTransform, new Vector2(20, 4), menu.txt_tiempo.gameObject);
+            fondo.GetComponentInChildren<Image>().color = new Color(0.04f, 0.05f, 0.08f, 0.62f);
             Transform acento = fondo.Find("Acento");
             if (acento != null) Object.Destroy(acento.gameObject);
         }
     }
 
-    // arma y municion: los textos no estaban asignados en la escena, se crean y se le entregan al HUD
+    // arma y municion: tarjeta estilizada abajo a la derecha con encabezado, barra reactiva e insignia de cargador extra
     private static void EstilizarArma(Transform canvas, HUD hud, TMP_FontAsset fuente, inicio menu)
     {
         TextMeshProUGUI arma = CampoHUD(hud, "txt_arma");
@@ -430,29 +462,37 @@ public static partial class EstiloUI
             AsignarCampoHUD(hud, "txt_municion", municion);
         }
 
-        EstiloTexto(arma, Vector2.zero, new Vector2(300, 30), 22, true, TextoTenue, TextAlignmentOptions.Left);
-        arma.characterSpacing = 3f;
-        Anclar(arma.rectTransform, new Vector2(1f, 0f), new Vector2(-48, 120), new Vector2(300, 30));
+        EstiloTexto(arma, Vector2.zero, new Vector2(320, 30), 23, true, TextoClaro, TextAlignmentOptions.Left);
+        arma.characterSpacing = 2.5f;
+        arma.richText = true;
+        Anclar(arma.rectTransform, new Vector2(1f, 0f), new Vector2(-48, 118), new Vector2(320, 30));
 
-        EstiloTexto(municion, Vector2.zero, new Vector2(300, 64), 50, true, Acento, TextAlignmentOptions.Left);
-        Anclar(municion.rectTransform, new Vector2(1f, 0f), new Vector2(-48, 64), new Vector2(300, 64));
+        EstiloTexto(municion, Vector2.zero, new Vector2(320, 58), 40, true, Acento, TextAlignmentOptions.Left);
+        Anclar(municion.rectTransform, new Vector2(1f, 0f), new Vector2(-48, 62), new Vector2(320, 58));
         municion.overflowMode = TextOverflowModes.Truncate;
         municion.textWrappingMode = TextWrappingModes.NoWrap;
 
-        // un solo cuadro detras de las dos lineas y la barra de municion
+        // Encabezado superior de la tarjeta de arma
+        TextMeshProUGUI encabezadoArma = CrearTextoHUD(canvas, "Titulo_armamento", fuente, arma.gameObject);
+        EstiloTexto(encabezadoArma, Vector2.zero, new Vector2(320, 22), 14, true, Acento, TextAlignmentOptions.Left);
+        encabezadoArma.text = "ARMAMENTO ACTIVO";
+        encabezadoArma.characterSpacing = 5f;
+        Anclar(encabezadoArma.rectTransform, new Vector2(1f, 0f), new Vector2(-48, 150), new Vector2(320, 22));
+
+        // un solo cuadro detras del encabezado, las dos lineas y la barra de municion
         RectTransform fondo = CrearFondoHUD(municion.rectTransform, Vector2.zero, arma.gameObject);
         fondo.anchorMin = fondo.anchorMax = fondo.pivot = new Vector2(1f, 0f);
-        fondo.sizeDelta = new Vector2(340, 150);
-        fondo.anchoredPosition = new Vector2(-32, 32);
+        fondo.sizeDelta = new Vector2(364, 162);
+        fondo.anchoredPosition = new Vector2(-28, 28);
         Transform acentoFondo = fondo.Find("Acento");
-        if (acentoFondo != null) ((RectTransform)acentoFondo).sizeDelta = new Vector2(5, 126);
+        if (acentoFondo != null) ((RectTransform)acentoFondo).sizeDelta = new Vector2(5, 136);
 
         if (canvas.Find("Barra_municion") == null)
         {
             RectTransform pista = CrearBarra(canvas, "Barra_municion", new Color(1f, 1f, 1f, 0.12f));
             pista.anchorMin = pista.anchorMax = pista.pivot = new Vector2(1f, 0f);
-            pista.sizeDelta = new Vector2(300, 8);
-            pista.anchoredPosition = new Vector2(-48, 46);
+            pista.sizeDelta = new Vector2(320, 8);
+            pista.anchoredPosition = new Vector2(-48, 44);
 
             RectTransform relleno = CrearBarra(pista, "Relleno", Acento);
             relleno.anchorMin = Vector2.zero;
@@ -462,6 +502,90 @@ public static partial class EstiloUI
             pista.gameObject.AddComponent<SeguirVisibilidad>().objetivo = arma.gameObject;
             pista.gameObject.AddComponent<HudMunicion>().Configurar(relleno, Acento, Hex("FF5252"));
         }
+    }
+
+    // Tarjeta de personaje y su habilidad pasiva (esquina inferior izquierda)
+    private static void EstilizarPersonajeYPasiva(Transform canvas, HUD hud, TMP_FontAsset fuente, inicio menu)
+    {
+        if (canvas.Find("Tarjeta_PersonajePasiva") != null) return;
+        GameObject sigue = CampoHUD(hud, "txt_arma") != null
+            ? CampoHUD(hud, "txt_arma").gameObject
+            : (menu.txt_tiempo != null ? menu.txt_tiempo.gameObject : null);
+
+        TextMeshProUGUI txtAnimal = CrearTextoHUD(canvas, "txt_personaje_hud", fuente, sigue);
+        EstiloTexto(txtAnimal, Vector2.zero, new Vector2(330, 32), 24, true, TextoClaro, TextAlignmentOptions.Left);
+        txtAnimal.richText = true;
+        Anclar(txtAnimal.rectTransform, new Vector2(0f, 0f), new Vector2(48, 116), new Vector2(330, 32));
+
+        TextMeshProUGUI txtPasiva = CrearTextoHUD(canvas, "txt_pasiva_hud", fuente, sigue);
+        EstiloTexto(txtPasiva, Vector2.zero, new Vector2(330, 68), 17, false, TextoTenue, TextAlignmentOptions.TopLeft);
+        txtPasiva.richText = true;
+        txtPasiva.lineSpacing = 6f;
+        Anclar(txtPasiva.rectTransform, new Vector2(0f, 0f), new Vector2(48, 42), new Vector2(330, 68));
+
+        TextMeshProUGUI encabezado = CrearTextoHUD(canvas, "Titulo_personaje_hud", fuente, sigue);
+        EstiloTexto(encabezado, Vector2.zero, new Vector2(330, 22), 14, true, Acento, TextAlignmentOptions.Left);
+        encabezado.text = "PERSONAJE & PASIVA";
+        encabezado.characterSpacing = 5f;
+        Anclar(encabezado.rectTransform, new Vector2(0f, 0f), new Vector2(48, 150), new Vector2(330, 22));
+
+        RectTransform fondo = CrearFondoHUD(txtPasiva.rectTransform, Vector2.zero, sigue);
+        fondo.name = "Tarjeta_PersonajePasiva";
+        fondo.anchorMin = fondo.anchorMax = fondo.pivot = new Vector2(0f, 0f);
+        fondo.sizeDelta = new Vector2(372, 162);
+        fondo.anchoredPosition = new Vector2(28, 28);
+        Transform acentoFondo = fondo.Find("Acento");
+        Image imgAcento = null;
+        if (acentoFondo != null)
+        {
+            ((RectTransform)acentoFondo).sizeDelta = new Vector2(5, 136);
+            imgAcento = acentoFondo.GetComponent<Image>();
+        }
+
+        txtAnimal.gameObject.AddComponent<HudPersonajePasiva>().Configurar(hud, txtAnimal, txtPasiva, encabezado, imgAcento);
+    }
+
+    // Reticula central dinamica, Hitmarker ('X') al impactar y Cartel superior de Bajas
+    private static void EstilizarReticulaYBajas(Transform canvas, HUD hud, TMP_FontAsset fuente, inicio menu)
+    {
+        if (canvas.Find("HudCombateFeedback") != null) return;
+        GameObject sigue = CampoHUD(hud, "txt_arma") != null
+            ? CampoHUD(hud, "txt_arma").gameObject
+            : (menu.txt_tiempo != null ? menu.txt_tiempo.gameObject : null);
+
+        GameObject raiz = new GameObject("HudCombateFeedback", typeof(RectTransform));
+        raiz.transform.SetParent(canvas, false);
+        RectTransform rr = (RectTransform)raiz.transform;
+        rr.anchorMin = Vector2.zero;
+        rr.anchorMax = Vector2.one;
+        rr.offsetMin = rr.offsetMax = Vector2.zero;
+        if (sigue != null) raiz.AddComponent<SeguirVisibilidad>().objetivo = sigue;
+
+        // 1. Hitmarker central ('X' estilizada)
+        TextMeshProUGUI txtHitmarker = CrearTextoSimple(raiz.transform, "Hitmarker", fuente, "×");
+        EstiloTexto(txtHitmarker, new Vector2(0, 12), new Vector2(90, 90), 58, true, new Color(1f, 1f, 1f, 0f), TextAlignmentOptions.Center);
+
+        // 2. Indicador de estado de punteria / Reticula tactica discreta bajo el temporizador
+        TextMeshProUGUI txtPunteria = CrearTextoSimple(raiz.transform, "EstadoPunteria", fuente, "");
+        EstiloTexto(txtPunteria, Vector2.zero, new Vector2(420, 26), 16, true, TextoTenue, TextAlignmentOptions.Center);
+        txtPunteria.richText = true;
+        txtPunteria.characterSpacing = 3f;
+        Anclar(txtPunteria.rectTransform, new Vector2(0.5f, 1f), new Vector2(0, -104), new Vector2(420, 26));
+
+        // 3. Banner de Baja Confirmada (debajo del reloj)
+        RectTransform bannerBaja = CapaTarjeta(raiz.transform, "BannerBaja", new Color(0.08f, 0.10f, 0.15f, 0.92f), new Vector2(440, 48), Vector2.zero);
+        Anclar(bannerBaja, new Vector2(0.5f, 1f), new Vector2(0, -138), new Vector2(440, 48));
+        CanvasGroup cgBanner = bannerBaja.gameObject.AddComponent<CanvasGroup>();
+        cgBanner.alpha = 0f;
+
+        RectTransform franjaBaja = CrearBarra(bannerBaja, "FranjaBaja", Acento);
+        Anclar(franjaBaja, new Vector2(0.5f, 1f), new Vector2(0, -2), new Vector2(380, 4));
+
+        TextMeshProUGUI txtBaja = CrearTextoSimple(bannerBaja, "TextoBaja", fuente, "");
+        EstiloTexto(txtBaja, Vector2.zero, new Vector2(420, 44), 22, true, TextoClaro, TextAlignmentOptions.Center);
+        txtBaja.richText = true;
+
+        raiz.AddComponent<HudCombateDinamico>().Configurar(hud, txtHitmarker, txtPunteria, cgBanner, bannerBaja, txtBaja);
     }
 
     private static void AsignarCampoHUD(HUD hud, string campo, TextMeshProUGUI valor)
@@ -1152,5 +1276,188 @@ public class TransicionMapa : MonoBehaviour
         string resultado = sb.ToString();
         if (resultado == "Cosina") resultado = "Cocina"; // el objeto de la escena esta mal escrito
         return resultado;
+    }
+}
+
+/// <summary>
+/// Tarjeta inferior izquierda: muestra el animal elegido, su color tematico y el estado en vivo de su pasiva.
+/// </summary>
+public class HudPersonajePasiva : MonoBehaviour
+{
+    private HUD hud;
+    private TextMeshProUGUI txtAnimal;
+    private TextMeshProUGUI txtPasiva;
+    private TextMeshProUGUI txtEncabezado;
+    private Image barraAcento;
+
+    private static readonly Color ColorCheto  = new Color(1.00f, 0.62f, 0.11f);
+    private static readonly Color ColorKaiser = new Color(0.35f, 0.68f, 0.96f);
+    private static readonly Color ColorDorito = new Color(0.96f, 0.82f, 0.22f);
+    private static readonly Color ColorCR7    = new Color(0.95f, 0.32f, 0.32f);
+
+    public void Configurar(HUD hudRef, TextMeshProUGUI animal, TextMeshProUGUI pasiva, TextMeshProUGUI encabezado, Image acento)
+    {
+        hud = hudRef;
+        txtAnimal = animal;
+        txtPasiva = pasiva;
+        txtEncabezado = encabezado;
+        barraAcento = acento;
+    }
+
+    private void LateUpdate()
+    {
+        if (txtAnimal == null || txtPasiva == null) return;
+        Personaje p = hud != null ? hud.JugadorLocal : null;
+        if (p == null)
+        {
+            txtAnimal.text = "Preparando...";
+            txtPasiva.text = "Esperando inicio de ronda";
+            return;
+        }
+
+        int idx = p.IndicePersonaje;
+        Color colorTema;
+        switch (idx)
+        {
+            case 0: // Cheto (Gato)
+                colorTema = ColorCheto;
+                txtAnimal.text = "<color=#FFB84D>CHETO</color>  <size=75%><color=#9AA3B5>· EL GATO</color></size>";
+                txtPasiva.text = "<color=#FFB84D><b>PASIVA: AGILIDAD FELINA</b></color>\n+25% Velocidad de carrera y +25% Salto";
+                break;
+
+            case 1: // Kaiser (Pastor Aleman)
+                colorTema = ColorKaiser;
+                txtAnimal.text = "<color=#63B3ED>KAISER</color>  <size=75%><color=#9AA3B5>· PASTOR ALEMÁN</color></size>";
+                txtPasiva.text = "<color=#63B3ED><b>PASIVA: OLFATO TÁCTICO</b></color>\nDetecta armas en cajas  ·  +40% Lanzamiento";
+                break;
+
+            case 2: // Dorito (La Rata)
+                colorTema = ColorDorito;
+                bool desarmado = p.armaEquipada == null || p.armaEquipada.EnCaja;
+                string estadoEvasion = desarmado
+                    ? "<color=#68D391><b>40% ACTIVA (Desarmado)</b></color>"
+                    : "<color=#F6E05E><b>30% ACTIVA (Armado)</b></color>";
+                txtAnimal.text = "<color=#F6E05E>DORITO</color>  <size=75%><color=#9AA3B5>· LA RATA</color></size>";
+                txtPasiva.text = "<color=#F6E05E><b>PASIVA: ESCURRIDIZO</b></color>\nEvasión Letal: " + estadoEvasion;
+                break;
+
+            default: // CR7 (La Cabra)
+                colorTema = ColorCR7;
+                bool tieneAK = p.armaEquipada != null && !p.armaEquipada.EnCaja && p.armaEquipada.EsAK47;
+                string extraAK = tieneAK
+                    ? "<color=#68D391><b>¡AK-47 LÁSER ACTIVO!</b></color>"
+                    : "Precisión AK-47 +70%";
+                txtAnimal.text = "<color=#FC8181>CR7</color>  <size=75%><color=#9AA3B5>· LA CABRA</color></size>";
+                txtPasiva.text = "<color=#FC8181><b>PASIVA: EMBESTIDA CR7</b></color>\nDerribo al deslizar  ·  " + extraAK;
+                break;
+        }
+
+        if (barraAcento != null) barraAcento.color = colorTema;
+        if (txtEncabezado != null) txtEncabezado.color = colorTema;
+    }
+}
+
+/// <summary>
+/// Controla el Hitmarker ('X' al acertar), el indicador tactico de punteria/dispersion y el Banner de Baja.
+/// </summary>
+public class HudCombateDinamico : MonoBehaviour
+{
+    private HUD hud;
+    private TextMeshProUGUI txtHitmarker;
+    private TextMeshProUGUI txtPunteria;
+    private CanvasGroup cgBanner;
+    private RectTransform rtBanner;
+    private TextMeshProUGUI txtBaja;
+
+    public void Configurar(
+        HUD hudRef,
+        TextMeshProUGUI hitmarker,
+        TextMeshProUGUI punteria,
+        CanvasGroup grupoBanner,
+        RectTransform rectBanner,
+        TextMeshProUGUI textoBaja)
+    {
+        hud = hudRef;
+        txtHitmarker = hitmarker;
+        txtPunteria = punteria;
+        cgBanner = grupoBanner;
+        rtBanner = rectBanner;
+        txtBaja = textoBaja;
+    }
+
+    private void LateUpdate()
+    {
+        ActualizarHitmarker();
+        ActualizarEstadoPunteria();
+        ActualizarBannerBaja();
+    }
+
+    private void ActualizarHitmarker()
+    {
+        if (txtHitmarker == null) return;
+        float restante = HUD.TiempoRestanteHitmarker;
+        if (restante <= 0f)
+        {
+            if (txtHitmarker.color.a > 0f)
+                txtHitmarker.color = new Color(1f, 1f, 1f, 0f);
+            return;
+        }
+
+        float t = Mathf.Clamp01(restante / HUD.DURACION_HITMARKER);
+        Color baseColor = HUD.HitmarkerEsMortal
+            ? new Color(1.0f, 0.32f, 0.25f, t)
+            : new Color(1.0f, 0.92f, 0.45f, t);
+        txtHitmarker.color = baseColor;
+        float escala = 1f + (1f - t) * 0.38f;
+        txtHitmarker.rectTransform.localScale = new Vector3(escala, escala, 1f);
+    }
+
+    private void ActualizarEstadoPunteria()
+    {
+        if (txtPunteria == null) return;
+        Personaje p = hud != null ? hud.JugadorLocal : null;
+        if (p == null || p.armaEquipada == null || p.armaEquipada.EnCaja)
+        {
+            txtPunteria.text = "";
+            return;
+        }
+
+        Arma a = p.armaEquipada;
+        if (a.EsFranco)
+        {
+            txtPunteria.text = "<color=#FF5252>● MIRA LÁSER ACTIVA · PENETRACIÓN CALIBRE .50 ●</color>";
+        }
+        else if (a.EsAK47 && p.EsCR7)
+        {
+            txtPunteria.text = "<color=#68D391>✦ MAESTRÍA CR7: DISPERSIÓN REDUCIDA AL MÍNIMO ✦</color>";
+        }
+        else if (p.EstaAgachado)
+        {
+            txtPunteria.text = "<color=#9AA3B5>[ POSTURA BAJA ]</color>";
+        }
+        else
+        {
+            txtPunteria.text = "";
+        }
+    }
+
+    private void ActualizarBannerBaja()
+    {
+        if (cgBanner == null || rtBanner == null || txtBaja == null) return;
+        float restante = HUD.TiempoRestanteAnuncioBaja;
+        if (restante <= 0f)
+        {
+            if (cgBanner.alpha > 0f) cgBanner.alpha = 0f;
+            return;
+        }
+
+        float transcurrido = HUD.DURACION_ANUNCIO_BAJA - restante;
+        float alphaEntrada = Mathf.Clamp01(transcurrido / 0.18f);
+        float alphaSalida = Mathf.Clamp01(restante / 0.35f);
+        cgBanner.alpha = Mathf.Min(alphaEntrada, alphaSalida);
+
+        float offsetY = Mathf.Lerp(-118f, -138f, alphaEntrada);
+        rtBanner.anchoredPosition = new Vector2(0f, offsetY);
+        txtBaja.text = $"<color=#FF5252>☠</color>  ¡ELIMINASTE A <color=#FFB84D><b>{HUD.UltimaVictimaBaja.ToUpperInvariant()}</b></color>!";
     }
 }

@@ -192,7 +192,7 @@ public class GestorSonido : MonoBehaviour
         return (lobby ? AjustesJuego.MusicaLobby : AjustesJuego.Musica) * AjustesJuego.GANANCIA_MAXIMA_MUSICA;
     }
 
-    // disparos, recargas y demas sonidos de armas usan su propio volumen; el resto va con "efectos"
+    // disparos, recargas y demas sonidos de armas usan su propio volumen; voces (voz_*) y demas van con "efectos"
     private static float VolumenCategoria(string nombre)
     {
         bool arma = nombre.StartsWith("disparo_") || nombre == "recarga" || nombre == "sin_municion" || nombre == "recoger";

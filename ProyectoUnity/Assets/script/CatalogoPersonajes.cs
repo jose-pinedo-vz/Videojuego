@@ -241,5 +241,11 @@ public class CatalogoPersonajes : ScriptableObject
         {
             personaje.RefrescarAnimator();
         }
+
+        AnimadorPuente puente = objetoCuerpo.GetComponent<AnimadorPuente>();
+        if (puente != null)
+        {
+            puente.RefrescarAnimator();
+        }
     }
 }

@@ -274,7 +274,12 @@ public class SelectorPersonaje : MonoBehaviour
         if (lobbyVisible)
         {
             int actual = red.IndicePersonajeActual;
-            if (actual >= 0 && actual != indicePrevio) MostrarModeloPrevio(actual);
+            if (actual >= 0 && actual != indicePrevio)
+            {
+                bool cambioDesdeOtro = indicePrevio >= 0;
+                MostrarModeloPrevio(actual);
+                if (cambioDesdeOtro) SonidosPersonaje.ReproducirVozLocal(actual, false, 0.85f);
+            }
         }
 
         bool[] ocupados = new bool[CatalogoPersonajes.TOTAL_PERSONAJES];

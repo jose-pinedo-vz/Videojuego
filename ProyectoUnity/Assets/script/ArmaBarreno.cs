@@ -90,11 +90,12 @@ public class ArmaBarreno : Arma
         Personaje lanzador = jugadorQueLaEquipo;
         lanzador.CancelarInmunidadPorAtaque();
         float dirX = lanzador.DireccionHorizontal;
+        float multLanzamiento = lanzador.MultiplicadorLanzamiento; // Pasiva de Kaiser: lanza 40% mas lejos
         // sale de la mano (donde esta el modelo del arma); el modelo de la mano se queda
         Vector3 origen = CentroBarrenoMano();
         if (origen == Vector3.zero || (origen - lanzador.transform.position).sqrMagnitude > 9f)
             origen = lanzador.transform.position + new Vector3(dirX * 0.55f, 1.1f, 0f);
-        Vector3 velocidadInicial = new Vector3(dirX * velocidadLanzamientoX, velocidadLanzamientoY, 0f);
+        Vector3 velocidadInicial = new Vector3(dirX * velocidadLanzamientoX * multLanzamiento, velocidadLanzamientoY * multLanzamiento, 0f);
 
         UltimoInicioTrazo = origen;
         UltimoFinTrazo = origen + velocidadInicial.normalized * 1.2f;

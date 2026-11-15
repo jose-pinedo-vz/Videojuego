@@ -153,6 +153,49 @@ public class Arma : MonoBehaviour
     public Vector3 UltimoInicioTrazo { get; protected set; } = Vector3.zero;
     public Vector3 UltimoFinTrazo { get; protected set; } = Vector3.right;
 
+    // Identificadores de rol de arma y materiales URP para proyectil balistico y mira laser
+    public bool EsFrancoBarret => gameObject.name.ToLowerInvariant().Contains("barret");
+    public bool EsAntitanques  => gameObject.name.ToLowerInvariant().Contains("antitanq");
+    public bool EsFranco       => EsFrancoBarret || EsAntitanques;
+    public bool EsAK47         => gameObject.name.ToLowerInvariant().Contains("ak");
+    public float DispersionEfectiva => (EsAK47 && jugadorQueLaEquipo != null && jugadorQueLaEquipo.EsCR7)
+        ? Dispersion * 0.30f // Pasiva de CR7 (la cabra): la dispersion del AK-47 mejora considerablemente
+        : Dispersion;
+
+    private static Material materialProyectilBalistico;
+    private static Material materialMiraLaser;
+    private LineRenderer miraLaser;
+    private TMPro.TextMeshPro etiquetaOlfatoKaiser;
+    private static Personaje jugadorLocalCache;
+    private static float tiempoCacheJugadorLocal;
+
+    protected static Material ObtenerMaterialBalistico()
+    {
+        if (materialProyectilBalistico != null) return materialProyectilBalistico;
+        Shader sh = Shader.Find("Sprites/Default");
+        if (sh == null) sh = Shader.Find("Universal Render Pipeline/Unlit");
+        if (sh == null) sh = Shader.Find("Unlit/Color");
+        materialProyectilBalistico = new Material(sh);
+        Color dorado = new Color(1f, 0.88f, 0.38f, 1f);
+        materialProyectilBalistico.color = dorado;
+        if (materialProyectilBalistico.HasProperty("_BaseColor"))
+            materialProyectilBalistico.SetColor("_BaseColor", dorado);
+        return materialProyectilBalistico;
+    }
+
+    protected static Material ObtenerMaterialLaser()
+    {
+        if (materialMiraLaser != null) return materialMiraLaser;
+        Shader sh = Shader.Find("Sprites/Default");
+        if (sh == null) sh = Shader.Find("Universal Render Pipeline/Unlit");
+        materialMiraLaser = new Material(sh);
+        Color rojo = new Color(1f, 0.14f, 0.14f, 0.42f);
+        materialMiraLaser.color = rojo;
+        if (materialMiraLaser.HasProperty("_BaseColor"))
+            materialMiraLaser.SetColor("_BaseColor", rojo);
+        return materialMiraLaser;
+    }
+
     protected virtual void Awake()
     {
         municionActual = municionMaxima;
@@ -160,6 +203,20 @@ public class Arma : MonoBehaviour
         rotacionInicial = transform.rotation;
         if (gameObject.name.ToLowerInvariant().Contains("antitanq"))
             destruyeYAtraviesaSuperficies = true;
+
+        // Evitar que el LineRenderer del prefab tenga shader roto/magenta en URP o quede encendido como laser
+        if (trazo == null) trazo = GetComponent<LineRenderer>();
+        if (trazo != null)
+        {
+            if (trazo.sharedMaterial == null || trazo.sharedMaterial.shader == null || trazo.sharedMaterial.shader.name.Contains("Error"))
+            {
+                trazo.sharedMaterial = ObtenerMaterialBalistico();
+            }
+            if (modoDisparo != ModoDisparo.RayoContinuo)
+            {
+                trazo.enabled = false;
+            }
+        }
 
         AsegurarMallaProceduralSiCorresponde();
         InicializarRenderizadoresArma();
@@ -773,6 +830,79 @@ public class Arma : MonoBehaviour
         {
             ActualizarAudioRaygun();
         }
+
+        ActualizarEtiquetaOlfatoKaiser();
+    }
+
+    private static Personaje ObtenerJugadorLocalCache()
+    {
+        if (jugadorLocalCache != null && jugadorLocalCache.gameObject.activeInHierarchy && (!jugadorLocalCache.IsSpawned || jugadorLocalCache.IsOwner))
+        {
+            if (Time.unscaledTime - tiempoCacheJugadorLocal < 0.35f)
+                return jugadorLocalCache;
+        }
+        tiempoCacheJugadorLocal = Time.unscaledTime;
+        jugadorLocalCache = null;
+        foreach (Personaje p in FindObjectsByType<Personaje>())
+        {
+            if (p != null && (!p.IsSpawned || p.IsOwner))
+            {
+                jugadorLocalCache = p;
+                break;
+            }
+        }
+        return jugadorLocalCache;
+    }
+
+    /// <summary>
+    /// Pasiva de Kaiser (Pastor Aleman): detecta que arma saldra dentro de las cajas de madera cerradas.
+    /// </summary>
+    private void ActualizarEtiquetaOlfatoKaiser()
+    {
+        Personaje local = ObtenerJugadorLocalCache();
+        bool mostrar = enCaja
+            && gameObject.activeInHierarchy
+            && local != null
+            && local.EsKaiser
+            && (jugadorQueLaEquipo == null || jugadorQueLaEquipo == local);
+
+        if (!mostrar)
+        {
+            if (etiquetaOlfatoKaiser != null && etiquetaOlfatoKaiser.gameObject.activeSelf)
+                etiquetaOlfatoKaiser.gameObject.SetActive(false);
+            return;
+        }
+
+        if (etiquetaOlfatoKaiser == null)
+        {
+            Transform existente = transform.Find("EtiquetaOlfatoKaiser");
+            if (existente != null) etiquetaOlfatoKaiser = existente.GetComponent<TMPro.TextMeshPro>();
+            if (etiquetaOlfatoKaiser == null)
+            {
+                GameObject go = new GameObject("EtiquetaOlfatoKaiser");
+                go.transform.SetParent(transform, true);
+                etiquetaOlfatoKaiser = go.AddComponent<TMPro.TextMeshPro>();
+                etiquetaOlfatoKaiser.alignment = TMPro.TextAlignmentOptions.Center;
+                etiquetaOlfatoKaiser.fontSize = 1.85f;
+                etiquetaOlfatoKaiser.fontStyle = TMPro.FontStyles.Bold;
+                etiquetaOlfatoKaiser.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+                etiquetaOlfatoKaiser.outlineWidth = 0.28f;
+                etiquetaOlfatoKaiser.outlineColor = new Color32(10, 14, 24, 255);
+                etiquetaOlfatoKaiser.sortingOrder = 115;
+            }
+        }
+
+        if (!etiquetaOlfatoKaiser.gameObject.activeSelf)
+            etiquetaOlfatoKaiser.gameObject.SetActive(true);
+
+        string nombreReal = !string.IsNullOrEmpty(nombreMostrado) ? nombreMostrado : FormatearNombreArma(gameObject.name);
+        etiquetaOlfatoKaiser.text = $"<color=#63B3ED>[OLFATO]</color> <color=#FFF3B0>{nombreReal}</color>";
+        Vector3 centro = cajaVisual != null ? cajaVisual.transform.position : ObtenerCentroVisual();
+        float flotacion = Mathf.Sin(Time.time * 3.5f) * 0.04f;
+        etiquetaOlfatoKaiser.transform.position = centro + new Vector3(0f, 0.48f + flotacion, -0.15f);
+        etiquetaOlfatoKaiser.transform.localScale = Vector3.one;
+        Camera cam = Camera.main;
+        etiquetaOlfatoKaiser.transform.rotation = cam != null ? cam.transform.rotation : Quaternion.identity;
     }
 
     private void AplicarParpadeoDespawn(bool visible)
@@ -814,7 +944,85 @@ public class Arma : MonoBehaviour
             }
         }
 
+        ActualizarMiraLaserFranco();
         ActualizarEfectoKamehameha();
+    }
+
+    /// <summary>
+    /// Mira laser tactica tenue para los francotiradores (Barret .50 y Antitanques).
+    /// Le da ventaja de pre-apuntado en toda la pantalla.
+    /// </summary>
+    private void ActualizarMiraLaserFranco()
+    {
+        bool activo = EsFranco
+            && jugadorQueLaEquipo != null
+            && !enCaja
+            && !recargando
+            && municionActual > 0
+            && !jugadorQueLaEquipo.EstaMuriendo
+            && !jugadorQueLaEquipo.EnRagdoll;
+
+        if (!activo)
+        {
+            if (miraLaser != null && miraLaser.enabled) miraLaser.enabled = false;
+            return;
+        }
+
+        if (miraLaser == null)
+        {
+            Transform existente = transform.Find("MiraLaserFranco");
+            if (existente != null) miraLaser = existente.GetComponent<LineRenderer>();
+            if (miraLaser == null)
+            {
+                GameObject go = new GameObject("MiraLaserFranco");
+                go.transform.SetParent(transform, false);
+                miraLaser = go.AddComponent<LineRenderer>();
+                miraLaser.sharedMaterial = ObtenerMaterialLaser();
+                miraLaser.startColor = new Color(1f, 0.12f, 0.12f, 0.48f);
+                miraLaser.endColor = new Color(1f, 0.15f, 0.15f, 0.12f);
+                miraLaser.startWidth = 0.016f;
+                miraLaser.endWidth = 0.010f;
+                miraLaser.positionCount = 2;
+                miraLaser.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                miraLaser.receiveShadows = false;
+            }
+        }
+
+        float dirX = jugadorQueLaEquipo.DireccionHorizontal;
+        bool haciaArriba = PegadoAPared();
+        Vector3 dirLaser = haciaArriba ? Vector3.up : new Vector3(dirX, 0f, 0f);
+
+        Vector3 boca = transform.position;
+        Bounds b = ObtenerBoundsArma();
+        if (b.size.sqrMagnitude > 0.00001f)
+        {
+            boca = haciaArriba
+                ? new Vector3(b.center.x, b.max.y, b.center.z)
+                : new Vector3(dirX > 0f ? b.max.x : b.min.x, b.center.y, b.center.z);
+        }
+
+        Vector3 origenFisico = new Vector3(jugadorQueLaEquipo.transform.position.x, boca.y, jugadorQueLaEquipo.transform.position.z);
+        float distMax = Mathf.Max(20f, Alcance);
+        Vector3 finFisico = origenFisico + dirLaser * distMax;
+
+        RaycastHit[] hits = Physics.RaycastAll(origenFisico, dirLaser, distMax, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        float menorDist = distMax;
+        foreach (RaycastHit h in hits)
+        {
+            if (h.distance <= 0.06f || h.collider == null) continue;
+            if (h.collider.transform.IsChildOf(jugadorQueLaEquipo.transform) ||
+                h.collider.GetComponentInParent<Personaje>() == jugadorQueLaEquipo) continue;
+            if (h.collider.GetComponentInParent<Arma>() != null) continue;
+            if (h.distance < menorDist)
+            {
+                menorDist = h.distance;
+                finFisico = h.point;
+            }
+        }
+
+        miraLaser.SetPosition(0, boca);
+        miraLaser.SetPosition(1, new Vector3(finFisico.x, finFisico.y, boca.z));
+        miraLaser.enabled = true;
     }
 
     // Efecto visual tipo Kamehameha (carga y haz) solo para la raygun
@@ -846,6 +1054,8 @@ public class Arma : MonoBehaviour
     protected virtual void OnDisable()
     {
         DetenerRayoContinuo();
+        if (miraLaser != null) miraLaser.enabled = false;
+        if (etiquetaOlfatoKaiser != null) etiquetaOlfatoKaiser.gameObject.SetActive(false);
     }
 
     protected virtual void ActualizarRotacionEnMano()
@@ -975,16 +1185,15 @@ public class Arma : MonoBehaviour
             red.AvisarArmaRpc(gameObject.name, municionActual, duracionBateriaActual); // sincroniza arma y balas restantes
     }
 
-    // para que los demas jugadores vean el trazo de un disparo que no es suyo
+    // para que los demas jugadores vean el proyectil de un disparo que no es suyo
     public virtual void MostrarDisparo(Vector3 inicio, Vector3 fin)
     {
         ContadorDisparos++;
         UltimoInicioTrazo = inicio;
         UltimoFinTrazo = fin;
-        if (corrutinaTrazo != null) StopCoroutine(corrutinaTrazo);
-        corrutinaTrazo = StartCoroutine(MostrarTrazo(inicio, fin));
+        LanzarProyectilVisual(inicio, fin, false);
 
-        // Si es escopeta y llega un disparo remoto, dibujar tambien los perdigones visuales
+        // Si es escopeta y llega un disparo remoto, lanzar tambien los perdigones visuales
         if (perdigonesPorDisparo > 1)
         {
             float dist = Vector3.Distance(inicio, fin);
@@ -996,67 +1205,56 @@ public class Arma : MonoBehaviour
                 Vector3 dirPellet = new Vector3(dirBase.x, dirBase.y + offsetY, 0f).normalized;
                 Vector3 finPellet = inicio + dirPellet * dist;
                 finPellet.z = inicio.z;
-                StartCoroutine(MostrarTrazoExtraEscopeta(i, inicio, finPellet));
+                LanzarProyectilVisual(inicio, finPellet, true);
             }
         }
+    }
+
+    protected void LanzarProyectilVisual(Vector3 inicio, Vector3 fin, bool esPerdigon)
+    {
+        // Asegurar que el LineRenderer fijo del prefab permanezca apagado en armas de balas
+        if (trazo != null && !disparandoRayo && !disparandoRayoRemoto)
+            trazo.enabled = false;
+
+        float distancia = Vector3.Distance(inicio, fin);
+        if (distancia <= 0.05f) return;
+
+        float velocidad = EsFranco ? 240f : (esPerdigon ? 115f : 145f);
+        float longitudBala = EsFranco ? 1.35f : (esPerdigon ? 0.55f : 0.85f);
+        float grosorCabeza = EsFranco ? 0.068f : (esPerdigon ? 0.036f : 0.048f);
+        Color colorCabeza = EsFranco
+            ? new Color(1.0f, 0.96f, 0.72f, 0.98f)
+            : new Color(1.0f, 0.92f, 0.52f, 0.94f);
+        Color colorCola = EsFranco
+            ? new Color(1.0f, 0.48f, 0.12f, 0.0f)
+            : new Color(1.0f, 0.55f, 0.15f, 0.0f);
+
+        GameObject goBala = new GameObject("ProyectilBalistico");
+        LineRenderer lr = goBala.AddComponent<LineRenderer>();
+        lr.sharedMaterial = ObtenerMaterialBalistico();
+        lr.startColor = colorCabeza;
+        lr.endColor = colorCola;
+        lr.startWidth = grosorCabeza;
+        lr.endWidth = grosorCabeza * 0.22f;
+        lr.numCapVertices = 3;
+        lr.positionCount = 2;
+        lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        lr.receiveShadows = false;
+
+        ProyectilBalisticoVisual comp = goBala.AddComponent<ProyectilBalisticoVisual>();
+        comp.Inicializar(lr, inicio, fin, velocidad, longitudBala);
     }
 
     private IEnumerator MostrarTrazo(Vector3 inicio, Vector3 fin)
     {
-        if (trazo == null) trazo = GetComponent<LineRenderer>();
-        if (trazo == null) yield break;
-        trazo.positionCount = 2;
-        trazo.SetPosition(0, inicio);
-        trazo.SetPosition(1, fin);
-        trazo.startWidth = 0.05f;
-        trazo.endWidth = 0.05f;
-        trazo.enabled = true;
-        float duracionTrazo = modoDisparo == ModoDisparo.Automatico ? Mathf.Clamp(0.6f / Mathf.Max(1f, Cadencia), 0.025f, 0.075f) : 0.1f;
-        yield return new WaitForSeconds(duracionTrazo);
-        if (!disparandoRayo && !disparandoRayoRemoto)
-            trazo.enabled = false;
-    }
-
-    private LineRenderer ObtenerTrazoExtraEscopeta(int indice)
-    {
-        while (trazosExtraEscopeta.Count <= indice)
-        {
-            GameObject goTrazo = new GameObject($"TrazoPerdigon_{trazosExtraEscopeta.Count}");
-            goTrazo.transform.SetParent(transform, false);
-            LineRenderer lr = goTrazo.AddComponent<LineRenderer>();
-            if (trazo == null) trazo = GetComponent<LineRenderer>();
-            if (trazo != null && trazo.sharedMaterial != null)
-            {
-                lr.sharedMaterial = trazo.sharedMaterial;
-                lr.startColor = trazo.startColor;
-                lr.endColor = trazo.endColor;
-            }
-            else
-            {
-                Shader sh = Shader.Find("Sprites/Default");
-                if (sh != null) lr.material = new Material(sh);
-                lr.startColor = new Color(1f, 0.85f, 0.3f, 0.9f);
-                lr.endColor = new Color(1f, 0.55f, 0.1f, 0.3f);
-            }
-            lr.startWidth = 0.035f;
-            lr.endWidth = 0.025f;
-            lr.positionCount = 2;
-            lr.enabled = false;
-            trazosExtraEscopeta.Add(lr);
-        }
-        return trazosExtraEscopeta[indice];
+        LanzarProyectilVisual(inicio, fin, false);
+        yield break;
     }
 
     private IEnumerator MostrarTrazoExtraEscopeta(int indice, Vector3 inicio, Vector3 fin)
     {
-        LineRenderer lr = ObtenerTrazoExtraEscopeta(indice);
-        if (lr == null) yield break;
-        lr.positionCount = 2;
-        lr.SetPosition(0, inicio);
-        lr.SetPosition(1, fin);
-        lr.enabled = true;
-        yield return new WaitForSeconds(0.09f);
-        if (lr != null) lr.enabled = false;
+        LanzarProyectilVisual(inicio, fin, true);
+        yield break;
     }
 
     // Entrada secundaria (tecla F o clic derecho, ej. lanzar machete)
@@ -1624,6 +1822,10 @@ public class Arma : MonoBehaviour
 
         int numRayos = Mathf.Max(1, perdigonesPorDisparo);
         HashSet<Personaje> golpeadosEnEsteDisparo = new HashSet<Personaje>();
+        float dispEfectiva = DispersionEfectiva; // Aplica pasiva de CR7 con AK-47 (-70% dispersion)
+        bool esFranco = EsFranco;
+        bool esBarret = EsFrancoBarret;
+
         Vector3 finTrazoPrincipal = haciaArriba
             ? (inicioTrazo + new Vector3(0f, Alcance, 0f))
             : (inicioTrazo + new Vector3(dirX * Alcance, 0f, 0f));
@@ -1635,11 +1837,11 @@ public class Arma : MonoBehaviour
             {
                 // Abanico amplio para la escopeta + ligera variacion aleatoria
                 float t = (i / (float)(numRayos - 1)) - 0.5f; // -0.5 .. +0.5
-                spread = (t * Dispersion * 0.24f) + Random.Range(-Dispersion, Dispersion) * 0.03f;
+                spread = (t * dispEfectiva * 0.24f) + Random.Range(-dispEfectiva, dispEfectiva) * 0.03f;
             }
             else
             {
-                spread = Random.Range(-Dispersion, Dispersion) * 0.1f;
+                spread = Random.Range(-dispEfectiva, dispEfectiva) * 0.1f;
             }
 
             Vector3 direccionDisparo = haciaArriba
@@ -1668,14 +1870,17 @@ public class Arma : MonoBehaviour
                 ObjetoDestruible destruible = hit.collider.GetComponentInParent<ObjetoDestruible>();
                 if (destruible != null && !destruible.Destruido)
                 {
-                    if (destruyeYAtraviesaSuperficies)
+                    bool puedePerforarCobertura = destruyeYAtraviesaSuperficies
+                        || (esBarret && (destruiblesEnRayo == null || destruiblesEnRayo.Count < 1));
+
+                    if (puedePerforarCobertura)
                     {
                         if (destruiblesEnRayo == null) destruiblesEnRayo = new HashSet<ObjetoDestruible>();
                         if (destruiblesEnRayo.Add(destruible))
                         {
                             GestorEntornoDestruible.SolicitarDestruirObstaculo(destruible, hit.point, direccionDisparo, false);
                         }
-                        // El Antitanques atraviesa la superficie destruible en el mismo disparo
+                        // El Antitanques perfora todas las coberturas; el Barret .50 perfora 1 cobertura destructible
                         continue;
                     }
 
@@ -1691,7 +1896,13 @@ public class Arma : MonoBehaviour
                     if (personajeGolpeado != jugadorQueLaEquipo && !golpeadosEnEsteDisparo.Contains(personajeGolpeado))
                     {
                         golpeadosEnEsteDisparo.Add(personajeGolpeado);
-                        personajeGolpeado.RecibirImpactoDeDisparo(jugadorQueLaEquipo, hit.point, direccionDisparo);
+                        personajeGolpeado.RecibirImpactoDeDisparo(jugadorQueLaEquipo, hit.point, direccionDisparo, esFranco);
+                    }
+
+                    // Los francotiradores (Barret .50 y Antitanques) atraviesan enemigos en fila (colateral)
+                    if (esFranco)
+                    {
+                        continue;
                     }
                 }
 
@@ -1961,5 +2172,62 @@ public class Arma : MonoBehaviour
         {
             Soltar(posicionDrop);
         }
+    }
+}
+
+/// <summary>
+/// Proyectil balistico visual: anima una capsula/estela luminosa que viaja rapidamente
+/// desde la boca del arma hasta el punto de impacto, reemplazando la linea laser estatica.
+/// </summary>
+public class ProyectilBalisticoVisual : MonoBehaviour
+{
+    private LineRenderer lr;
+    private Vector3 inicio;
+    private Vector3 fin;
+    private Vector3 dir;
+    private float distanciaTotal;
+    private float velocidad;
+    private float longitudEstela;
+    private float avance;
+    private float tiempoVidaMax = 0.35f;
+
+    public void Inicializar(LineRenderer lineRenderer, Vector3 pInicio, Vector3 pFin, float vel, float largo)
+    {
+        lr = lineRenderer;
+        inicio = pInicio;
+        fin = pFin;
+        Vector3 delta = pFin - pInicio;
+        distanciaTotal = delta.magnitude;
+        dir = distanciaTotal > 0.0001f ? (delta / distanciaTotal) : Vector3.right;
+        velocidad = Mathf.Max(40f, vel);
+        longitudEstela = Mathf.Min(largo, distanciaTotal * 0.65f);
+        avance = Mathf.Min(longitudEstela * 0.45f, distanciaTotal);
+        ActualizarPosiciones();
+    }
+
+    private void Update()
+    {
+        tiempoVidaMax -= Time.deltaTime;
+        if (lr == null || tiempoVidaMax <= 0f)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        avance += velocidad * Time.deltaTime;
+        ActualizarPosiciones();
+
+        if (avance - longitudEstela >= distanciaTotal)
+        {
+            Destroy(gameObject);
+        }
+    }
+
+    private void ActualizarPosiciones()
+    {
+        float distCabeza = Mathf.Min(avance, distanciaTotal);
+        float distCola = Mathf.Clamp(avance - longitudEstela, 0f, distanciaTotal);
+        lr.SetPosition(0, inicio + dir * distCabeza);
+        lr.SetPosition(1, inicio + dir * distCola);
     }
 }

@@ -65,7 +65,17 @@ public class TrampaCascara : MonoBehaviour
                     if (h.collider.GetComponentInParent<Arma>() != null) continue;
                     if (h.collider.GetComponentInParent<TrampaCascara>() != null) continue;
 
+                    // Si choca con una pared vertical en el aire, rebota y sigue cayendo hasta el piso
+                    if (h.normal.y < 0.45f)
+                    {
+                        transform.position = new Vector3(h.point.x + h.normal.x * 0.12f, transform.position.y, transform.position.z);
+                        velocidad.x = -velocidad.x * 0.32f;
+                        paso = new Vector3(0f, velocidad.y * dt, 0f);
+                        break;
+                    }
+
                     transform.position = new Vector3(h.point.x, h.point.y + 0.05f, transform.position.z);
+                    transform.rotation = Quaternion.identity;
                     velocidad = Vector3.zero;
                     enPiso = true;
                     AlCaerAlPiso();
@@ -76,6 +86,7 @@ public class TrampaCascara : MonoBehaviour
             if (!enPiso)
             {
                 transform.position += paso;
+                transform.Rotate(0f, 0f, -Mathf.Sign(velocidad.x != 0f ? velocidad.x : 1f) * 320f * dt, Space.Self);
             }
         }
 
