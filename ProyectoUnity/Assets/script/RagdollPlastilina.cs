@@ -82,6 +82,8 @@ public class RagdollPlastilina : MonoBehaviour
     private Vector3 puntoSeguro;   // ultima posicion de la cadera dentro del mapa
 
     public bool Activo { get; private set; }
+    public bool TieneCadera => raiz != null && raiz.t != null;
+    public Vector3 PosicionCadera => raiz != null && raiz.t != null ? raiz.t.position : transform.position;
 
     // direccion: x = hacia donde sale despedido (signo), z = hacia donde mira el personaje (signo; si es 0 se usa x), duracion = maximo de tiempo tirado
     public void Iniciar(Personaje quien, Animator anim, CharacterController cc, Vector3 direccion, float duracion, bool duenio)
@@ -218,10 +220,19 @@ public class RagdollPlastilina : MonoBehaviour
         }
     }
 
-    // zona valida = caja que une los colliders solidos del mapa (sin personajes, armas ni triggers)
+    // zona valida = limites del mapa activo (si no hay GameManager, usa los colliders de la escena)
     private void CalcularLimites()
     {
         hayLimites = false;
+        GameManager gm = FindAnyObjectByType<GameManager>();
+        if (gm != null && gm.ObtenerLimitesMapaActivo(out Bounds limitesMapa, out _))
+        {
+            hayLimites = true;
+            limites = limitesMapa;
+            pisoMinimoY = Mathf.Max(limites.min.y, personaje.transform.position.y - 3.5f);
+            return;
+        }
+
         Bounds b = new Bounds();
         foreach (Collider c in FindObjectsByType<Collider>(FindObjectsSortMode.None))
         {

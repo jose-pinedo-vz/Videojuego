@@ -90,6 +90,9 @@ public class Personaje : NetworkBehaviour
     private const float DURACION_INMUNIDAD_SPAWN = 3.0f; // inmunidad temporal al reaparecer (se cancela al disparar/atacar)
     private const int CUBOS_MUERTE = 22;       // cantidad de cubitos en que se rompe el modelo
     private const float DISTANCIA_CAIDA = 12f; // cuanto puede bajar del ultimo suelo pisado antes de considerarse caido del mapa
+    private GameManager gameManagerCache;
+    private float tiempoUltimoRescateMapa = -10f;
+    private bool rescateFueraMapaPendiente = false;
 
     public bool EstaMuriendo => muriendo;
 
@@ -328,7 +331,19 @@ public class Personaje : NetworkBehaviour
     {
 
         if (IsSpawned && !IsOwner) return; // un objeto por equipo en red
-        if (!TieneModeloVisible() || muriendo || EnRagdoll)
+        if (!TieneModeloVisible() || muriendo)
+        {
+            LimpiarEstadoMovimientoAnim();
+            return;
+        }
+
+        if (!revisarSpawnPendiente && VerificarLimitesMapaEnFrame())
+        {
+            LimpiarEstadoMovimientoAnim();
+            return;
+        }
+
+        if (EnRagdoll)
         {
             LimpiarEstadoMovimientoAnim();
             return;
@@ -539,9 +554,9 @@ public class Personaje : NetworkBehaviour
         float factorVel = velocidad > 0.01f ? Mathf.Clamp(velocidadActual / velocidad, 0.55f, 1.35f) : 1f;
         factorVelocidadAnim = Mathf.MoveTowards(factorVelocidadAnim, objetivoMov > 0.01f ? factorVel : 1f, 12f * dt);
 
-        animMovimiento.Value = movimientoSuavizado;
+        EscribirFloatRed(animMovimiento, movimientoSuavizado);
         animCorriendo.Value = (objetivoMov > 0.01f || movimientoSuavizado > 0.1f) && !estaDeslizando;
-        animVelocidadCarrera.Value = factorVelocidadAnim;
+        EscribirFloatRed(animVelocidadCarrera, factorVelocidadAnim);
 
     }
     //TERMINADO GRAVEDAD
@@ -588,6 +603,20 @@ public class Personaje : NetworkBehaviour
         return velocidadCaida.y <= 0.1f && (Time.time - tiempoUltimoSuelo) <= 0.09f;
     }
 
+    private static void EscribirFloatRed(NetworkVariable<float> netVar, float valor, float umbral = 0.04f)
+    {
+        if (netVar == null) return;
+        if (Mathf.Approximately(valor, 0f))
+        {
+            if (!Mathf.Approximately(netVar.Value, 0f)) netVar.Value = 0f;
+            return;
+        }
+        if (Mathf.Abs(netVar.Value - valor) >= umbral)
+        {
+            netVar.Value = valor;
+        }
+    }
+
     private void LimpiarEstadoMovimientoAnim()
     {
         estaDeslizando = false;
@@ -602,8 +631,8 @@ public class Personaje : NetworkBehaviour
             animDeslizando.Value = false;
             animAgachado.Value = false;
             animCorriendo.Value = false;
-            animMovimiento.Value = 0f;
-            animVelocidadCarrera.Value = 1f;
+            EscribirFloatRed(animMovimiento, 0f, 0.005f);
+            if (!Mathf.Approximately(animVelocidadCarrera.Value, 1f)) animVelocidadCarrera.Value = 1f;
             animEnSuelo.Value = true;
             animSaltar.Value = false;
         }
@@ -1151,6 +1180,11 @@ public class Personaje : NetworkBehaviour
 
         if (esDuenioYLevantarse)
         {
+            if (!EsPosicionSeguraEnMapa(destino))
+            {
+                RescatarDeFueraDeMapa();
+                return;
+            }
             Teletransportar(destino);
             ultimaPosicionSegura = destino;
         }
@@ -1347,11 +1381,209 @@ public class Personaje : NetworkBehaviour
         if (atacante != null) atacante.muertes++;
         if (!muriendo) StartCoroutine(MorirYReaparecer(posicionInicial));
     }
-    // Si el jugador cae fuera del mapa vuelve al ultimo suelo que pisó
+    private GameManager ObtenerGameManager()
+    {
+        if (gameManagerCache == null) gameManagerCache = FindAnyObjectByType<GameManager>();
+        return gameManagerCache;
+    }
+
+    private static bool HaySueloDebajo(Vector3 pos, float distancia)
+    {
+        RaycastHit[] golpes = Physics.RaycastAll(pos + Vector3.up * 0.35f, Vector3.down, distancia + 0.35f, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < golpes.Length; i++)
+        {
+            Collider c = golpes[i].collider;
+            if (c == null) continue;
+            if (c.GetComponentInParent<Personaje>() != null) continue;
+            if (c.GetComponentInParent<Arma>() != null) continue;
+            return true;
+        }
+        return false;
+    }
+
+    private bool PosicionDentroDeLimites(Vector3 pos, Bounds lim, float planoZ)
+    {
+        const float margenX = 5f;
+        const float margenAbajo = 4f;
+        const float margenArriba = 22f;
+        const float margenZ = 10f;
+
+        if (pos.x < lim.min.x - margenX || pos.x > lim.max.x + margenX) return false;
+        if (pos.y < lim.min.y - margenAbajo || pos.y > lim.max.y + margenArriba) return false;
+        if (Mathf.Abs(pos.z - planoZ) > margenZ) return false;
+        return true;
+    }
+
+    private bool EsPosicionSeguraEnMapa(Vector3 pos)
+    {
+        GameManager gm = ObtenerGameManager();
+        if (gm != null && gm.ObtenerLimitesMapaActivo(out Bounds lim, out float planoZ))
+        {
+            if (!PosicionDentroDeLimites(pos, lim, planoZ)) return false;
+        }
+        return HaySueloDebajo(pos, 18f);
+    }
+
+    private bool VerificarLimitesMapaEnFrame()
+    {
+        if (rescateFueraMapaPendiente)
+        {
+            if (Time.time - tiempoUltimoRescateMapa >= 1.5f)
+            {
+                rescateFueraMapaPendiente = false;
+                CompletarRescateEnSpawn(EsPosicionSeguraEnMapa(ultimaPosicionSegura) ? ultimaPosicionSegura : posicionInicial);
+            }
+            return true;
+        }
+
+        if (Time.time - tiempoUltimoRescateMapa < 0.35f) return false;
+
+        Vector3 pos = (EnRagdoll && ragdoll.TieneCadera) ? ragdoll.PosicionCadera : transform.position;
+        if (float.IsNaN(pos.x) || float.IsNaN(pos.y) || float.IsNaN(pos.z) ||
+            float.IsInfinity(pos.x) || float.IsInfinity(pos.y) || float.IsInfinity(pos.z))
+        {
+            RescatarDeFueraDeMapa();
+            return true;
+        }
+
+        GameManager gm = ObtenerGameManager();
+        if (gm != null && gm.ObtenerLimitesMapaActivo(out Bounds limites, out float planoZ))
+        {
+            if (!PosicionDentroDeLimites(pos, limites, planoZ))
+            {
+                RescatarDeFueraDeMapa();
+                return true;
+            }
+
+            if (pos.y < ultimaPosicionSegura.y - DISTANCIA_CAIDA && !HaySueloDebajo(pos, 22f))
+            {
+                RescatarDeFueraDeMapa();
+                return true;
+            }
+        }
+        else if (pos.y < ultimaPosicionSegura.y - DISTANCIA_CAIDA && !HaySueloDebajo(pos, 22f))
+        {
+            RescatarDeFueraDeMapa();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void RescatarDeFueraDeMapa()
+    {
+        if (muriendo || !gameObject.activeInHierarchy) return;
+        if (rescateFueraMapaPendiente) return;
+
+        rescateFueraMapaPendiente = true;
+        tiempoUltimoRescateMapa = Time.time;
+
+        if (EnRagdoll)
+        {
+            ragdoll.Terminar(false);
+            if (IsSpawned) CancelarRagdollVisualRpc();
+        }
+
+        velocidadCaida = Vector3.zero;
+        velocidadEmpuje = Vector3.zero;
+        velocidadHorizontalX = 0f;
+        estaDeslizando = false;
+        tiempoRestanteDeslizar = 0f;
+
+        ActivarInmunidadSpawn(1.2f);
+
+        if (IsSpawned)
+        {
+            SolicitarRescateFueraDeMapaServerRpc();
+        }
+        else
+        {
+            GameManager gm = ObtenerGameManager();
+            Vector3 destino = gm != null ? gm.SpawnAleatorio(transform.position) : ultimaPosicionSegura;
+            if (!EsPosicionSeguraEnMapa(destino))
+            {
+                destino = EsPosicionSeguraEnMapa(posicionInicial) ? posicionInicial : ultimaPosicionSegura;
+            }
+            CompletarRescateEnSpawn(destino);
+        }
+    }
+
+    [Rpc(SendTo.Server)]
+    private void SolicitarRescateFueraDeMapaServerRpc()
+    {
+        GameManager gm = ObtenerGameManager();
+        Vector3 destino = gm != null ? gm.SpawnAleatorio(transform.position) : ultimaPosicionSegura;
+        if (!EsPosicionSeguraEnMapa(destino))
+        {
+            destino = EsPosicionSeguraEnMapa(posicionInicial) ? posicionInicial : ultimaPosicionSegura;
+        }
+
+        if (redCache == null) redCache = GetComponent<Red>();
+        if (redCache != null && IsSpawned)
+        {
+            redCache.RescatarEnSpawnDuenioRpc(destino);
+        }
+        else
+        {
+            CompletarRescateEnSpawn(destino);
+        }
+    }
+
+    [Rpc(SendTo.NotOwner)]
+    private void CancelarRagdollVisualRpc()
+    {
+        if (EnRagdoll) ragdoll.Terminar(false);
+    }
+
+    public void CompletarRescateEnSpawn(Vector3 destino)
+    {
+        if (IsSpawned && !IsOwner) return;
+
+        rescateFueraMapaPendiente = false;
+        tiempoUltimoRescateMapa = Time.time;
+
+        if (EnRagdoll)
+        {
+            ragdoll.Terminar(false);
+            if (IsSpawned) CancelarRagdollVisualRpc();
+        }
+
+        if (!EsPosicionSeguraEnMapa(destino))
+        {
+            destino = EsPosicionSeguraEnMapa(ultimaPosicionSegura) ? ultimaPosicionSegura : posicionInicial;
+        }
+
+        Teletransportar(destino);
+        ultimaPosicionSegura = destino;
+        velocidadCaida = Vector3.zero;
+        velocidadEmpuje = Vector3.zero;
+        velocidadHorizontalX = 0f;
+        estaDeslizando = false;
+        tiempoRestanteDeslizar = 0f;
+        revisarSpawnPendiente = false;
+        LimpiarEstadoMovimientoAnim();
+        AjustarSpawnAlSuelo();
+        Debug.Log("[Personaje] Rescatado fuera de limites hacia spawn seguro: " + transform.position);
+    }
+
+    // Si el jugador cae fuera del mapa vuelve a un spawn valido sin contar muerte ni soltar su arma
     private void RecuperarDeCaida()
     {
-        if (controlador.isGrounded) ultimaPosicionSegura = transform.position;
-        if (transform.position.y < ultimaPosicionSegura.y - DISTANCIA_CAIDA) Teletransportar(ultimaPosicionSegura);
+        if (controlador.isGrounded && EsPosicionSeguraEnMapa(transform.position))
+        {
+            ultimaPosicionSegura = transform.position;
+        }
+        if (transform.position.y < ultimaPosicionSegura.y - DISTANCIA_CAIDA)
+        {
+            if (!HaySueloDebajo(transform.position, 22f))
+            {
+                RescatarDeFueraDeMapa();
+            }
+            else
+            {
+                Teletransportar(ultimaPosicionSegura);
+            }
+        }
     }
 
     // Coloca el spawn sobre el piso: si quedo dentro de un objeto lo sube hasta un hueco libre,

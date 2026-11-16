@@ -337,6 +337,24 @@ public class Red : NetworkBehaviour
         }
     }
 
+    // Reubicacion segura por caida/salida del mapa: conserva arma, no cuenta muerte y aplica breve inmunidad
+    [Rpc(SendTo.Owner)]
+    public void RescatarEnSpawnDuenioRpc(Vector3 posicion)
+    {
+        Personaje p = GetComponent<Personaje>();
+        if (p != null)
+        {
+            p.CompletarRescateEnSpawn(posicion);
+            return;
+        }
+
+        if (cc != null) cc.enabled = false;
+        transform.position = posicion;
+        if (netTransform != null)
+            netTransform.Teleport(posicion, transform.rotation, transform.localScale);
+        if (cc != null) cc.enabled = true;
+    }
+
     [Rpc(SendTo.NotOwner)]
     public void AvisarArmaRpc(string nombreArma, int municionRestante, float bateriaRestante)
     {
@@ -386,6 +404,12 @@ public class Red : NetworkBehaviour
         {
             if (arma.name == nombreArma)
             {
+                if (arma.ManejarEcoSoltadoLocal(enCaja, municionRestante, bateriaRestante))
+                {
+                    return;
+                }
+
+                arma.LimpiarSoltadoLocal();
                 arma.ColocarEnCaja(enCaja);
                 if (!enCaja) arma.EstablecerEstadoMunicion(municionRestante, bateriaRestante);
                 arma.Soltar(posicion);

@@ -231,6 +231,11 @@ public static class ModelosProceduralesArmas
 
     public static GameObject InstanciarModeloBarreno(Vector3 posicion)
     {
+        if (prefabBarrenoCache == null)
+        {
+            CatalogoArmas cat = CatalogoArmas.Obtener();
+            if (cat != null) prefabBarrenoCache = cat.prefabBarrenoProyectil;
+        }
 #if UNITY_EDITOR
         if (prefabBarrenoCache == null)
         {

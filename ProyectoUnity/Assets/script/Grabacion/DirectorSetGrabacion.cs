@@ -106,7 +106,9 @@ namespace Grabacion
         private int indiceParte = 1;
         private string prefijoSesionActual;
         private double tiempoProximoFrame;
+        private double tiempoProximoPreview;
         private int lecturasEnVuelo;
+        private readonly System.Collections.Generic.List<Renderer> renderersCuerpoOcultosTemp = new System.Collections.Generic.List<Renderer>();
         private int anchoCaptura;
         private int altoCaptura;
         private int fpsCaptura;
@@ -177,6 +179,7 @@ namespace Grabacion
         {
             RenderPipelineManager.beginCameraRendering -= AlIniciarRenderCamara;
             RenderPipelineManager.endCameraRendering -= AlTerminarRenderCamara;
+            RestaurarCuerpoObjetivoTemporalmente();
             Red.EstablecerOcultamientoTemporalPorRender(false);
             DetenerGrabacion("Grabacion cerrada");
             camaras?.EstablecerRenderActivo(false);
@@ -497,13 +500,50 @@ namespace Grabacion
             camaras.FijarTargetTexture(rtCaptura);
 
             double ahora = Time.realtimeSinceStartupAsDouble;
-            capturaPendienteEsteCuadro = grabando
-                && !pausado
-                && lecturasEnVuelo < MAX_LECTURAS_EN_VUELO
-                && (ahora + 0.002 >= tiempoProximoFrame);
+            if (grabando && !pausado)
+            {
+                capturaPendienteEsteCuadro = lecturasEnVuelo < MAX_LECTURAS_EN_VUELO
+                    && (ahora + 0.002 >= tiempoProximoFrame);
+                // Durante la grabacion solo se renderiza en los cuadros capturados (30/60 fps), evitando doble render PiP por frame
+                camaras.EstablecerRenderActivo(capturaPendienteEsteCuadro);
+            }
+            else
+            {
+                capturaPendienteEsteCuadro = false;
+                bool tickPreview = pipVisibleAhora && (ahora + 0.002 >= tiempoProximoPreview);
+                if (tickPreview)
+                {
+                    double pasoPreview = 1.0 / Mathf.Max(1, p.Fps);
+                    tiempoProximoPreview = Math.Max(ahora, tiempoProximoPreview + pasoPreview);
+                }
+                camaras.EstablecerRenderActivo(tickPreview);
+            }
+        }
 
-            // Si no esta abierta la mini PiP, solo renderiza en los cuadros necesarios para 30/60 fps
-            camaras.EstablecerRenderActivo(capturaPendienteEsteCuadro || pipVisibleAhora);
+        private void OcultarCuerpoObjetivoTemporalmente(Personaje objetivo)
+        {
+            RestaurarCuerpoObjetivoTemporalmente();
+            if (objetivo == null) return;
+
+            foreach (Renderer r in objetivo.GetComponentsInChildren<Renderer>(false))
+            {
+                if (r == null || !r.enabled) continue;
+                if (r is LineRenderer || r is ParticleSystemRenderer) continue;
+                if (r.GetComponentInParent<Arma>() != null) continue; // conserva el arma en mano visible en 1P
+
+                r.enabled = false;
+                renderersCuerpoOcultosTemp.Add(r);
+            }
+        }
+
+        private void RestaurarCuerpoObjetivoTemporalmente()
+        {
+            for (int i = 0; i < renderersCuerpoOcultosTemp.Count; i++)
+            {
+                Renderer r = renderersCuerpoOcultosTemp[i];
+                if (r != null) r.enabled = true;
+            }
+            renderersCuerpoOcultosTemp.Clear();
         }
 
         private void AlIniciarRenderCamara(ScriptableRenderContext ctx, Camera cam)
@@ -513,6 +553,10 @@ namespace Grabacion
             {
                 Red.EstablecerOcultamientoTemporalPorRender(true);
             }
+            if (camaras.TomaActual == TomaCamara.PrimeraPersona && camaras.ObjetivoActual != null)
+            {
+                OcultarCuerpoObjetivoTemporalmente(camaras.ObjetivoActual);
+            }
         }
 
         private void AlTerminarRenderCamara(ScriptableRenderContext ctx, Camera cam)
@@ -520,6 +564,7 @@ namespace Grabacion
             if (camaras == null || cam != camaras.CamaraCaptura) return;
 
             // Restaurar siempre antes de que Main Camera dibuje el cuadro del jugador
+            RestaurarCuerpoObjetivoTemporalmente();
             Red.EstablecerOcultamientoTemporalPorRender(false);
 
             if (!capturaPendienteEsteCuadro || !grabando || pausado || escritor == null || rtCaptura == null) return;
@@ -705,7 +750,7 @@ namespace Grabacion
                 if (camaras != null)
                 {
                     float nuevo = camaras.OffsetFrontalPrimeraPersona + 0.03f;
-                    camaras.OffsetFrontalPrimeraPersona = nuevo > 0.275f ? 0.12f : nuevo;
+                    camaras.OffsetFrontalPrimeraPersona = nuevo > 0.23f ? 0.04f : nuevo;
                 }
                 RefrescarUI();
             });

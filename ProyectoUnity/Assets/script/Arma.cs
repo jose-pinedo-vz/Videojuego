@@ -43,7 +43,40 @@ public class Arma : MonoBehaviour
     private float tiempoEnSueloSinDuenio = 0f;
     private bool esperandoRecogidaEnSpawn = false;
     private bool despawnSolicitado = false;
+    private float tiempoSoltadoLocal = -10f;
+    private float tiempoRecogidaLocal = -10f;
     protected virtual bool EstaEnVuelo => false;
+
+    public Personaje JugadorEquipado => jugadorQueLaEquipo;
+    public bool RecienSoltadaLocalmente(float ventana) => Time.unscaledTime - tiempoSoltadoLocal <= ventana;
+    public void LimpiarSoltadoLocal() => tiempoSoltadoLocal = -10f;
+
+    public bool ManejarEcoSoltadoLocal(bool enCajaServidor, int municionServidor, float bateriaServidor)
+    {
+        if (!gameObject.activeInHierarchy || !RecienSoltadaLocalmente(0.75f)) return false;
+
+        bool sostenidaLocalmente = jugadorQueLaEquipo != null && (!jugadorQueLaEquipo.IsSpawned || jugadorQueLaEquipo.IsOwner);
+        bool sostenidaPorRemoto = jugadorQueLaEquipo != null && jugadorQueLaEquipo.IsSpawned && !jugadorQueLaEquipo.IsOwner;
+        if (sostenidaPorRemoto) return false;
+
+        bool recogidaDespuesDeSoltar = tiempoRecogidaLocal > tiempoSoltadoLocal;
+        LimpiarSoltadoLocal();
+
+        if (sostenidaLocalmente && recogidaDespuesDeSoltar)
+        {
+            return true;
+        }
+
+        if (jugadorQueLaEquipo == null && transform.parent == null)
+        {
+            ColocarEnCaja(enCajaServidor);
+            if (!enCajaServidor) EstablecerEstadoMunicion(municionServidor, bateriaServidor);
+            EstablecerEsperandoEnSpawn(false);
+            return true;
+        }
+
+        return false;
+    }
 
     // Caida al soltarse: gravedad simple + raycast al piso, igual en todos los clientes (no depende de red)
     private bool cayendo = false;
@@ -169,30 +202,32 @@ public class Arma : MonoBehaviour
     private static Personaje jugadorLocalCache;
     private static float tiempoCacheJugadorLocal;
 
+    private static Material CrearMaterialEfectoSeguro(Color color)
+    {
+        Shader sh = Shader.Find("Sprites/Default")
+            ?? Shader.Find("Universal Render Pipeline/Unlit")
+            ?? Shader.Find("Unlit/Color")
+            ?? Shader.Find("Universal Render Pipeline/Lit")
+            ?? Shader.Find("Standard");
+        if (sh == null) return null;
+        Material mat = new Material(sh);
+        mat.color = color;
+        if (mat.HasProperty("_BaseColor"))
+            mat.SetColor("_BaseColor", color);
+        return mat;
+    }
+
     protected static Material ObtenerMaterialBalistico()
     {
         if (materialProyectilBalistico != null) return materialProyectilBalistico;
-        Shader sh = Shader.Find("Sprites/Default");
-        if (sh == null) sh = Shader.Find("Universal Render Pipeline/Unlit");
-        if (sh == null) sh = Shader.Find("Unlit/Color");
-        materialProyectilBalistico = new Material(sh);
-        Color dorado = new Color(1f, 0.88f, 0.38f, 1f);
-        materialProyectilBalistico.color = dorado;
-        if (materialProyectilBalistico.HasProperty("_BaseColor"))
-            materialProyectilBalistico.SetColor("_BaseColor", dorado);
+        materialProyectilBalistico = CrearMaterialEfectoSeguro(new Color(1f, 0.88f, 0.38f, 1f));
         return materialProyectilBalistico;
     }
 
     protected static Material ObtenerMaterialLaser()
     {
         if (materialMiraLaser != null) return materialMiraLaser;
-        Shader sh = Shader.Find("Sprites/Default");
-        if (sh == null) sh = Shader.Find("Universal Render Pipeline/Unlit");
-        materialMiraLaser = new Material(sh);
-        Color rojo = new Color(1f, 0.14f, 0.14f, 0.42f);
-        materialMiraLaser.color = rojo;
-        if (materialMiraLaser.HasProperty("_BaseColor"))
-            materialMiraLaser.SetColor("_BaseColor", rojo);
+        materialMiraLaser = CrearMaterialEfectoSeguro(new Color(1f, 0.14f, 0.14f, 0.42f));
         return materialMiraLaser;
     }
 
@@ -210,7 +245,8 @@ public class Arma : MonoBehaviour
         {
             if (trazo.sharedMaterial == null || trazo.sharedMaterial.shader == null || trazo.sharedMaterial.shader.name.Contains("Error"))
             {
-                trazo.sharedMaterial = ObtenerMaterialBalistico();
+                Material matTrazo = ObtenerMaterialBalistico();
+                if (matTrazo != null) trazo.sharedMaterial = matTrazo;
             }
             if (modoDisparo != ModoDisparo.RayoContinuo)
             {
@@ -334,6 +370,7 @@ public class Arma : MonoBehaviour
         recargando = false;
         tiempoEnSueloSinDuenio = 0f;
         despawnSolicitado = false;
+        LimpiarSoltadoLocal();
         ActualizarVisualMunicion();
     }
 
@@ -588,12 +625,18 @@ public class Arma : MonoBehaviour
             if (mrCaja != null)
             {
                 Color colorMadera = new Color(0.55f, 0.35f, 0.16f, 1f);
+                Shader shCaja = Shader.Find("Universal Render Pipeline/Lit")
+                    ?? Shader.Find("Standard")
+                    ?? Shader.Find("Sprites/Default");
                 Material mat = mrCaja.sharedMaterial != null
                     ? new Material(mrCaja.sharedMaterial)
-                    : new Material(Shader.Find("Universal Render Pipeline/Lit"));
-                mat.color = colorMadera;
-                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", colorMadera);
-                mrCaja.material = mat;
+                    : (shCaja != null ? new Material(shCaja) : null);
+                if (mat != null)
+                {
+                    mat.color = colorMadera;
+                    if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", colorMadera);
+                    mrCaja.material = mat;
+                }
             }
 
             cajaVisual.transform.SetParent(transform, true);
@@ -977,7 +1020,8 @@ public class Arma : MonoBehaviour
                 GameObject go = new GameObject("MiraLaserFranco");
                 go.transform.SetParent(transform, false);
                 miraLaser = go.AddComponent<LineRenderer>();
-                miraLaser.sharedMaterial = ObtenerMaterialLaser();
+                Material matLaser = ObtenerMaterialLaser();
+                if (matLaser != null) miraLaser.sharedMaterial = matLaser;
                 miraLaser.startColor = new Color(1f, 0.12f, 0.12f, 0.48f);
                 miraLaser.endColor = new Color(1f, 0.15f, 0.15f, 0.12f);
                 miraLaser.startWidth = 0.016f;
@@ -1154,6 +1198,7 @@ public class Arma : MonoBehaviour
         }
 
         ultimoFrameAccionC = Time.frameCount;
+        tiempoRecogidaLocal = Time.unscaledTime;
         cayendo = false;
         tiempoEnSueloSinDuenio = 0f;
         despawnSolicitado = false;
@@ -1231,7 +1276,8 @@ public class Arma : MonoBehaviour
 
         GameObject goBala = new GameObject("ProyectilBalistico");
         LineRenderer lr = goBala.AddComponent<LineRenderer>();
-        lr.sharedMaterial = ObtenerMaterialBalistico();
+        Material matBalistico = ObtenerMaterialBalistico();
+        if (matBalistico != null) lr.sharedMaterial = matBalistico;
         lr.startColor = colorCabeza;
         lr.endColor = colorCola;
         lr.startWidth = grosorCabeza;
@@ -1950,6 +1996,7 @@ public class Arma : MonoBehaviour
         esperandoRecogidaEnSpawn = false;
         tiempoEnSueloSinDuenio = 0f;
         despawnSolicitado = false;
+        LimpiarSoltadoLocal();
         ActualizarRotacionEnMano();
         recargando = false;
         if (municionSync >= 0)
@@ -2032,20 +2079,7 @@ public class Arma : MonoBehaviour
             Vector3 posBase = portador != null ? portador.transform.position : transform.position;
             // Cae al suelo frente al jugador para que él u otro jugador la pueda tomar/robar con C
             Vector3 posDrop = posBase + new Vector3(dirX * 0.45f, 0.25f, 0f);
-
-            if (portador != null && portador.armaEquipada == this)
-                portador.armaEquipada = null;
-            jugadorQueLaEquipo = null;
-
-            Red red = portador != null ? portador.GetComponent<Red>() : null;
-            if (red != null && red.IsSpawned && NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
-            {
-                red.SoltarArmaEnPosicionServerRpc(gameObject.name, posDrop, false, municionActual, duracionBateriaActual);
-            }
-            else
-            {
-                Soltar(posDrop);
-            }
+            SoltarYNotificarRed(portador, posDrop, false, municionActual, duracionBateriaActual);
         }
         else
         {
@@ -2139,6 +2173,19 @@ public class Arma : MonoBehaviour
         else cayendo = false;
     }
 
+    private void SoltarYNotificarRed(Personaje portador, Vector3 posicionDrop, bool seguiaEnCaja, int municionRestante, float bateriaRestante)
+    {
+        Red red = portador != null ? portador.GetComponent<Red>() : null;
+        bool enRed = red != null && red.IsSpawned && NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+        tiempoSoltadoLocal = enRed ? Time.unscaledTime : -10f;
+        Soltar(posicionDrop);
+
+        if (enRed)
+        {
+            red.SoltarArmaEnPosicionServerRpc(gameObject.name, posicionDrop, seguiaEnCaja, municionRestante, bateriaRestante);
+        }
+    }
+
     // Suelta el arma voluntariamente con tecla C (sincronizado en red)
     public void SoltarVoluntariamente()
     {
@@ -2155,23 +2202,7 @@ public class Arma : MonoBehaviour
         Personaje portador = jugadorQueLaEquipo;
         float dirX = portador.DireccionHorizontal;
         Vector3 posicionDrop = portador.transform.position + new Vector3(dirX * 0.45f, 0.25f, 0f);
-        bool seguiaEnCaja = enCaja;
-        int municionRestante = municionActual;
-        float bateriaRestante = duracionBateriaActual;
-
-        if (portador.armaEquipada == this)
-            portador.armaEquipada = null;
-        jugadorQueLaEquipo = null;
-
-        Red red = portador.GetComponent<Red>();
-        if (red != null && red.IsSpawned && NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
-        {
-            red.SoltarArmaEnPosicionServerRpc(gameObject.name, posicionDrop, seguiaEnCaja, municionRestante, bateriaRestante);
-        }
-        else
-        {
-            Soltar(posicionDrop);
-        }
+        SoltarYNotificarRed(portador, posicionDrop, enCaja, municionActual, duracionBateriaActual);
     }
 }
 

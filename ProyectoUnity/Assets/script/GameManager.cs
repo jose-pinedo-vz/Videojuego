@@ -40,6 +40,11 @@ public class GameManager : NetworkBehaviour
     private int ultimoMapa = -1;
     private int rondasRestantes = 0; // mapas que faltan por jugar segun la configuracion del host
 
+    private GameObject mapaLimitesCache;
+    private Bounds limitesMapaCache;
+    private float planoZMapaCache;
+    private bool tieneLimitesMapaCache;
+
     // Registro en servidor para asignar uno de los 4 personajes (Cheto, Kaiser, Dorito, CR7) al azar sin repetir
     private readonly Dictionary<ulong, int> personajePorCliente = new Dictionary<ulong, int>();
     private readonly Dictionary<ulong, FixedString32Bytes> etiquetaPorCliente = new Dictionary<ulong, FixedString32Bytes>();
@@ -198,7 +203,72 @@ public class GameManager : NetworkBehaviour
         if (texto == null) return null;
 
         List<GameObject> mapas = texto.Mapas;
-        return indiceMapa < mapas.Count ? mapas[indiceMapa] : null;
+        if (indiceMapa >= 0 && indiceMapa < mapas.Count && mapas[indiceMapa] != null && mapas[indiceMapa].activeInHierarchy)
+            return mapas[indiceMapa];
+
+        for (int i = 0; i < mapas.Count; i++)
+        {
+            if (mapas[i] != null && mapas[i].activeInHierarchy)
+                return mapas[i];
+        }
+
+        return (indiceMapa >= 0 && indiceMapa < mapas.Count) ? mapas[indiceMapa] : null;
+    }
+
+    public bool ObtenerLimitesMapaActivo(out Bounds limites, out float planoZ)
+    {
+        GameObject mapa = MapaActual();
+        if (mapa == null || !mapa.activeInHierarchy)
+        {
+            limites = default;
+            planoZ = 0f;
+            return false;
+        }
+
+        if (tieneLimitesMapaCache && mapaLimitesCache == mapa)
+        {
+            limites = limitesMapaCache;
+            planoZ = planoZMapaCache;
+            return true;
+        }
+
+        Bounds b = new Bounds();
+        bool hay = false;
+        foreach (Collider c in mapa.GetComponentsInChildren<Collider>(false))
+        {
+            if (c == null || !c.enabled || c.isTrigger) continue;
+            if (c.GetComponentInParent<Personaje>() != null) continue;
+            if (c.GetComponentInParent<Arma>() != null) continue;
+            if (!hay) { b = c.bounds; hay = true; } else b.Encapsulate(c.bounds);
+        }
+
+        List<Vector3> spawns = TodosLosSpawns();
+        for (int i = 0; i < spawns.Count; i++)
+        {
+            if (!hay) { b = new Bounds(spawns[i], Vector3.one); hay = true; } else b.Encapsulate(spawns[i]);
+        }
+
+        foreach (Transform spArma in BuscarPuntos(mapa, PREFIJO_ARMA))
+        {
+            if (spArma == null) continue;
+            if (!hay) { b = new Bounds(spArma.position, Vector3.one); hay = true; } else b.Encapsulate(spArma.position);
+        }
+
+        if (!hay)
+        {
+            limites = default;
+            planoZ = 0f;
+            return false;
+        }
+
+        planoZMapaCache = spawns.Count > 0 ? spawns[0].z : b.center.z;
+        limitesMapaCache = b;
+        mapaLimitesCache = mapa;
+        tieneLimitesMapaCache = true;
+
+        limites = limitesMapaCache;
+        planoZ = planoZMapaCache;
+        return true;
     }
 
     // Todos los spawns del mapa en el mismo plano Z (el del que mas se repite), asi uno mal colocado
@@ -306,6 +376,8 @@ public class GameManager : NetworkBehaviour
 
         // Primero activamos el mapa actual en clientes y host para que sus colliders y SueloSeguro queden listos
         iniciarClienteRpc(indiceMapa);
+        mapaLimitesCache = null;
+        tieneLimitesMapaCache = false;
 
         // Activar armas aleatorias y coberturas/plataformas destruibles en el mapa activo
         GestorArmas ga = GestorArmas.Instancia;
@@ -379,6 +451,9 @@ public class GameManager : NetworkBehaviour
     [Rpc(SendTo.ClientsAndHost)]
     public void iniciarClienteRpc(int indiceMapaElegido)
     {
+        indiceMapa = indiceMapaElegido;
+        mapaLimitesCache = null;
+        tieneLimitesMapaCache = false;
         if (texto != null)
         {
             texto.iniciarPartida(indiceMapaElegido);

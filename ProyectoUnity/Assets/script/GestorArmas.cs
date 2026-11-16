@@ -98,6 +98,18 @@ public class GestorArmas : NetworkBehaviour
         new Vector3(10.57f,      4.38f,  3.058f),
     };
 
+    public static int TotalModelosDefinidos => CONFIG_MODELOS.Length;
+
+    public static List<(string nombre, string ruta)> ObtenerRutasModelos()
+    {
+        var lista = new List<(string nombre, string ruta)>(CONFIG_MODELOS.Length);
+        for (int i = 0; i < CONFIG_MODELOS.Length; i++)
+        {
+            lista.Add((CONFIG_MODELOS[i].nombre, CONFIG_MODELOS[i].rutaFbx));
+        }
+        return lista;
+    }
+
     private void Awake()
     {
         Instancia = this;
@@ -167,15 +179,26 @@ public class GestorArmas : NetworkBehaviour
 
     private void ConfigurarArmasEnEscena()
     {
+        CatalogoArmas catalogo = CatalogoArmas.Obtener();
+
         for (int i = 0; i < CONFIG_MODELOS.Length; i++)
         {
             ConfigModeloArma cfg = CONFIG_MODELOS[i];
             GameObject objBase = BuscarObjetoArmaEnEscena(cfg.nombre);
+            GameObject prefabCatalogo = catalogo != null ? catalogo.ObtenerModelo(cfg.nombre) : null;
 
             for (int copia = 0; copia < COPIAS_POR_ARMA; copia++)
             {
                 string nombreInstancia = copia == 0 ? cfg.nombre : $"{cfg.nombre}_{copia + 1}";
                 GameObject objArma = copia == 0 ? objBase : BuscarObjetoArmaEnEscena(nombreInstancia);
+
+                if (objArma == null && prefabCatalogo != null)
+                {
+                    objArma = Instantiate(prefabCatalogo);
+                    objArma.name = nombreInstancia;
+                    objArma.transform.localScale = cfg.escala;
+                    objArma.transform.rotation = Quaternion.Euler(cfg.rotacionEuler);
+                }
 
 #if UNITY_EDITOR
                 if (objArma == null)
@@ -686,14 +709,19 @@ public class GestorArmas : NetworkBehaviour
             int idx = cajasMunicion.Count;
             string nombreCaja = $"CajaMunicion_{idx}";
             GameObject existente = null;
+            CatalogoArmas catalogo = CatalogoArmas.Obtener();
+            GameObject prefabFbx = catalogo != null ? catalogo.prefabCajaMunicion : null;
 #if UNITY_EDITOR
-            GameObject prefabFbx = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Modelos/caja municion/caja municion.fbx");
+            if (prefabFbx == null)
+            {
+                prefabFbx = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Modelos/caja municion/caja municion.fbx");
+            }
+#endif
             if (prefabFbx != null)
             {
                 existente = Instantiate(prefabFbx);
                 existente.name = nombreCaja;
             }
-#endif
             if (existente == null)
             {
                 existente = new GameObject(nombreCaja);
@@ -1034,6 +1062,13 @@ public class GestorArmas : NetworkBehaviour
     {
         if (activar)
         {
+            // Si esta PC acaba de soltar localmente esta arma (con C o al abrir caja) y vuelve su propio eco del servidor:
+            if (!esNuevaCajaEnSpawn && arma.ManejarEcoSoltadoLocal(enCaja, municion, bateria))
+            {
+                return;
+            }
+
+            arma.LimpiarSoltadoLocal();
             arma.gameObject.SetActive(true);
             arma.ColocarEnCaja(enCaja);
             if (esNuevaCajaEnSpawn)
@@ -1050,6 +1085,7 @@ public class GestorArmas : NetworkBehaviour
         }
         else
         {
+            arma.LimpiarSoltadoLocal();
             arma.EstablecerEsperandoEnSpawn(false);
             arma.ColocarEnCaja(enCaja);
             arma.Soltar(posicion); // si un jugador la traia del mapa anterior, se la quita de la mano

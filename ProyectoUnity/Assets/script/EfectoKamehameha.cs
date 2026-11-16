@@ -58,7 +58,8 @@ public class EfectoKamehameha : MonoBehaviour
         nh.transform.SetParent(transform, false);
         nucleoHaz = nh.AddComponent<LineRenderer>();
         nucleoHaz.useWorldSpace = true;
-        nucleoHaz.material = new Material(Shader.Find("Sprites/Default"));
+        Shader shKame = Shader.Find("Sprites/Default") ?? Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+        if (shKame != null) nucleoHaz.material = new Material(shKame);
         nucleoHaz.sortingOrder = 49;
         nucleoHaz.numCapVertices = 8;
         nucleoHaz.enabled = false;
@@ -146,7 +147,8 @@ public class EfectoKamehameha : MonoBehaviour
         // Haz exterior (azul, con degradado más tenue en la punta)
         if (!materialListo)
         {
-            trazo.material = new Material(Shader.Find("Sprites/Default"));   // evita el tinte morado del material original
+            Shader shTrazo = Shader.Find("Sprites/Default") ?? Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            if (shTrazo != null) trazo.material = new Material(shTrazo);   // evita el tinte morado del material original
             materialListo = true;
         }
         trazo.widthCurve = AnimationCurve.Constant(0f, 1f, 1f);

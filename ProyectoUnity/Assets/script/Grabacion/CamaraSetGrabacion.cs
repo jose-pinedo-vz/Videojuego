@@ -21,8 +21,9 @@ namespace Grabacion
     {
         public TomaCamara TomaActual { get; private set; } = TomaCamara.PrimeraPersona;
         public bool HabilitadoEnPartida { get; set; }
-        public float OffsetFrontalPrimeraPersona { get; set; } = 0.18f;
+        public float OffsetFrontalPrimeraPersona { get; set; } = 0.08f;
         public Camera CamaraCaptura => camaraGrabacion;
+        public Personaje ObjetivoActual => objetivoActual;
 
         private Camera camaraPrincipal;
         private Camera camaraGrabacion;
@@ -353,12 +354,12 @@ namespace Grabacion
                 if (fCabeza.sqrMagnitude > 0.05f) adelantePlano = fCabeza.normalized;
             }
 
-            Vector3 posDeseada = posBaseCabeza + Vector3.up * 0.05f + adelantePlano * OffsetFrontalPrimeraPersona;
+            Vector3 posDeseada = posBaseCabeza + Vector3.up * 0.04f + adelantePlano * OffsetFrontalPrimeraPersona;
             // Leve sesgo en +Z para que al girar 180° la transicion pase por el lado abierto de la sala
-            Vector3 dirMirada = (adelantePlano + new Vector3(0f, -0.06f, 0.025f)).normalized;
+            Vector3 dirMirada = (adelantePlano + new Vector3(0f, -0.05f, 0.02f)).normalized;
             Quaternion rotDeseada = Quaternion.LookRotation(dirMirada, Vector3.up);
 
-            ActualizarTransformCamaraGrabacion(posDeseada, rotDeseada, 74f, 0.035f, 34f, 16f, dt);
+            ActualizarTransformCamaraGrabacion(posDeseada, rotDeseada, 76f, 0.025f, 58f, 22f, dt);
         }
 
         private void AplicarJuegoZoom()
